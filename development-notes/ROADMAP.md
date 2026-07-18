@@ -174,7 +174,7 @@
 
 ## 阶段 6：主人人脸注册和识别
 
-状态：进行中。
+状态：已完成。
 
 目标：
 
@@ -193,9 +193,16 @@
 - 测试使用合成或公开非私人样例。
 - 隐私数据路径加入忽略规则或本地说明。
 
+实现记录：
+
+- 建立 `LocalFaceStore`、`FaceIdentity`、`FaceRecognitionResult` 和 `FaceRecognizer` 协议。
+- 私有人脸数据默认路径为 `ai-controller/data/`，已加入 `.gitignore`。
+- `MockFaceRecognizer` 通过阈值确认身份，低于阈值或无 identity 时不会确认主人。
+- 当前不采集真实照片，不生成真实人脸特征。
+
 ## 阶段 7：视觉追踪和安全跟随
 
-状态：尚未开始。
+状态：进行中。
 
 目标：
 

@@ -17,7 +17,8 @@
 - Mock 机器人：本地 HTTP 服务模拟固件 JSON API。
 - 摄像头原型：提供 Mock 帧源、可选 OpenCV 摄像头源、帧率和延迟统计。
 - 检测原型：提供检测结果数据结构、Mock 人体/物体检测器和 JSON 输出。
-- 单元测试：覆盖状态查询、命令别名、急停、心跳、通信超时、摄像头 Mock 和检测 Mock。
+- 人脸身份原型：提供本地身份目录规范、注册/删除接口和 Mock 识别阈值逻辑。
+- 单元测试：覆盖状态查询、命令别名、急停、心跳、通信超时、摄像头 Mock、检测 Mock 和人脸身份 Mock。
 
 ## 支持的命令
 
@@ -109,6 +110,21 @@ powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" detect-smoke --mock
 - `distanceM`：初步距离估计接口，可为空。
 
 检测模块只生成结构化感知结果，不会直接调用机器人动作接口。
+
+## 人脸身份原型
+
+本阶段只实现本地身份数据结构和 Mock 识别，不采集真实照片，不生成真实人脸特征。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" face-id-smoke
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" face-id-smoke --confidence 0.6 --threshold 0.75
+```
+
+隐私规则：
+
+- 私有人脸数据默认放在 `ai-controller/data/`。
+- `ai-controller/data/` 已加入仓库忽略规则。
+- 未确认身份时，识别结果不会默认当作主人。
 
 连接真实机器人前必须由用户明确确认，并设置：
 

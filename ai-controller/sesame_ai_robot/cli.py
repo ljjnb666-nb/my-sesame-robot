@@ -9,6 +9,7 @@ from .camera import CameraMonitor, MockCameraSource, OpenCVCameraSource, enumera
 from .logging_config import configure_logging
 from .mock_robot import MockRobotServer
 from .detection import MockObjectDetector, result_to_jsonable
+from .face_identity import FaceIdentity, MockFaceRecognizer, recognition_to_jsonable
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,6 +45,10 @@ def build_parser() -> argparse.ArgumentParser:
     detect_parser = subparsers.add_parser("detect-smoke", help="Run one object detection pass")
     detect_parser.add_argument("--mock", action="store_true", help="Use generated frames and mock detections")
     detect_parser.add_argument("--index", type=int, default=0)
+
+    face_parser = subparsers.add_parser("face-id-smoke", help="Run one face identity pass with mock data")
+    face_parser.add_argument("--confidence", type=float, default=0.82)
+    face_parser.add_argument("--threshold", type=float, default=0.75)
     return parser
 
 
@@ -81,6 +86,12 @@ def main() -> int:
         finally:
             source.close()
         print(json.dumps(result_to_jsonable(result), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "face-id-smoke":
+        identity = FaceIdentity(identity_id="owner-local", display_name="Owner", created_at=0.0)
+        result = MockFaceRecognizer(identity, args.confidence, args.threshold).identify(MockCameraSource().read())
+        print(json.dumps(recognition_to_jsonable(result), ensure_ascii=False, indent=2))
         return 0
 
     if args.robot_url:
