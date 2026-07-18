@@ -66,6 +66,8 @@ uint8_t idleBlinkRepeatsLeft = 0;
 volatile bool emergencyStopActive = false;
 bool motionInProgress = false;
 bool pendingEmergencyReset = false;
+bool communicationTimedOut = false;
+unsigned long lastContinuousCommandMs = 0;
 String pendingSerialCommand = ""; bool pendingSerialCommandAvailable = false;
 char serialCommandBuffer[32];
 byte serialBufferPos = 0;
@@ -109,6 +111,7 @@ int8_t servoSubtrim[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 int frameDelay = 100;
 int walkCycles = 10;
 int motorCurrentDelay = 20; // ms delay between motor movements to prevent over-current
+const unsigned long COMMUNICATION_TIMEOUT_MS = 1200;
 
 struct FaceEntry {
   const char* name;
@@ -206,6 +209,7 @@ enum class RobotCommand : uint8_t {
   Stop,
   EmergencyStop,
   ResetEmergencyStop,
+  Heartbeat,
   Unknown
 };
 
@@ -222,6 +226,10 @@ void requestEmergencyStopReset();
 void resetEmergencyStop();
 bool isEmergencyStopActive();
 bool shouldAbortMotion();
+bool isContinuousMotionCommand(RobotCommand command);
+bool hasCommunicationTimedOut();
+void refreshContinuousCommandDeadline(const String& command);
+void clearContinuousCommandDeadline();
 void completeRobotMotion();
 void clearSerialInputState();
 void executeSerialCommand(const char* command, bool allowLongActions);
@@ -277,6 +285,7 @@ RobotCommand parseRobotCommand(const String& command) {
   if (normalized == "stop") return RobotCommand::Stop;
   if (normalized == "emergency_stop" || normalized == "estop") return RobotCommand::EmergencyStop;
   if (normalized == "reset_emergency_stop") return RobotCommand::ResetEmergencyStop;
+  if (normalized == "heartbeat" || normalized == "ping") return RobotCommand::Heartbeat;
 
   return RobotCommand::Unknown;
 }
@@ -319,6 +328,7 @@ void setCurrentCommandFromRobotCommand(RobotCommand command, const String& origi
 
   if (command == RobotCommand::Stop || command == RobotCommand::None) {
     currentCommand = "";
+    clearContinuousCommandDeadline();
     return;
   }
 
@@ -351,6 +361,12 @@ void dispatchRobotCommand(RobotCommand command) {
 
   if (command == RobotCommand::Stop || command == RobotCommand::None) {
     currentCommand = "";
+    clearContinuousCommandDeadline();
+    return;
+  }
+
+  if (command == RobotCommand::Heartbeat) {
+    refreshContinuousCommandDeadline(currentCommand);
     return;
   }
 
@@ -427,6 +443,7 @@ void dispatchRobotCommand(RobotCommand command) {
     case RobotCommand::Stop:
     case RobotCommand::EmergencyStop:
     case RobotCommand::ResetEmergencyStop:
+    case RobotCommand::Heartbeat:
     case RobotCommand::None:
     case RobotCommand::Unknown:
       break;
@@ -452,6 +469,7 @@ void clearSerialInputState() {
 void activateEmergencyStop() {
   emergencyStopActive = true;
   currentCommand = "";
+  clearContinuousCommandDeadline();
   pendingSerialCommand = "";
   pendingSerialCommandAvailable = false;
   pendingEmergencyReset = false;
@@ -461,6 +479,7 @@ void activateEmergencyStop() {
 void resetEmergencyStop() {
   emergencyStopActive = false;
   currentCommand = "";
+  clearContinuousCommandDeadline();
   pendingEmergencyReset = false;
 }
 
@@ -482,7 +501,37 @@ void completeRobotMotion() {
 }
 
 bool isEmergencyStopActive() { return emergencyStopActive; }
-bool shouldAbortMotion() { return isEmergencyStopActive(); }
+
+bool isContinuousMotionCommand(RobotCommand command) {
+  return command == RobotCommand::WalkForward ||
+         command == RobotCommand::WalkBackward ||
+         command == RobotCommand::TurnLeft ||
+         command == RobotCommand::TurnRight;
+}
+
+void refreshContinuousCommandDeadline(const String& command) {
+  if (!isContinuousMotionCommand(parseRobotCommand(command))) return;
+  lastContinuousCommandMs = millis();
+  communicationTimedOut = false;
+}
+
+void clearContinuousCommandDeadline() {
+  lastContinuousCommandMs = 0;
+  communicationTimedOut = false;
+}
+
+bool hasCommunicationTimedOut() {
+  if (!isContinuousMotionCommand(parseRobotCommand(currentCommand))) return false;
+  if (lastContinuousCommandMs == 0) return false;
+  if (millis() - lastContinuousCommandMs <= COMMUNICATION_TIMEOUT_MS) return false;
+
+  currentCommand = "";
+  lastContinuousCommandMs = 0;
+  communicationTimedOut = true;
+  return true;
+}
+
+bool shouldAbortMotion() { return isEmergencyStopActive() || hasCommunicationTimedOut(); }
 
 void handleCommandWeb() {
   // We send 200 OK immediately so the web browser doesn't hang waiting for animation to finish
@@ -493,13 +542,20 @@ void handleCommandWeb() {
     server.send(200, "text/plain", "OK");
   }
   else if (server.hasArg("go")) {
-    queueRobotCommand(server.arg("go"));
+    String command = server.arg("go");
+    queueRobotCommand(command);
+    refreshContinuousCommandDeadline(command);
     recordInput();
     exitIdle();
     server.send(200, "text/plain", "OK");
   }
   else if (server.hasArg("stop")) {
     queueRobotCommand("stop");
+    recordInput();
+    server.send(200, "text/plain", "OK");
+  }
+  else if (server.hasArg("heartbeat")) {
+    refreshContinuousCommandDeadline(currentCommand);
     recordInput();
     server.send(200, "text/plain", "OK");
   }
@@ -547,6 +603,8 @@ void handleGetStatus() {
   String json = "{";
   json += "\"currentCommand\":\"" + currentCommand + "\",";
   json += "\"currentFace\":\"" + currentFaceName + "\",";
+  json += "\"communicationTimedOut\":" + String(communicationTimedOut ? "true" : "false") + ",";
+  json += "\"commandTimeoutMs\":" + String(COMMUNICATION_TIMEOUT_MS) + ",";
   json += "\"networkConnected\":" + String(networkConnected ? "true" : "false") + ",";
   json += "\"apIP\":\"" + WiFi.softAPIP().toString() + "\"";
   if (networkConnected) {
@@ -632,6 +690,13 @@ void handleApiCommand() {
   
   RobotCommand robotCommand = parseRobotCommand(command);
 
+  if (robotCommand == RobotCommand::Heartbeat) {
+    refreshContinuousCommandDeadline(currentCommand);
+    recordInput();
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Heartbeat accepted\"}");
+    return;
+  }
+
   // Execute command
   if (robotCommand == RobotCommand::Stop) {
     setCurrentCommandFromRobotCommand(robotCommand, command);
@@ -639,6 +704,7 @@ void handleApiCommand() {
     server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command stopped\"}");
   } else {
     setCurrentCommandFromRobotCommand(robotCommand, command);
+    refreshContinuousCommandDeadline(command);
     recordInput();
     exitIdle();
     server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command executed\"}");
@@ -891,6 +957,8 @@ void loop() {
   updateAnimatedFace();
   updateIdleBlink();
   updateWifiInfoScroll();
+
+  hasCommunicationTimedOut();
 
   if (currentCommand != "") {
     dispatchRobotCommand(parseRobotCommand(currentCommand));

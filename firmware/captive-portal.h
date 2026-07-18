@@ -599,16 +599,32 @@ function lockMotors(duration = 3000) {
   }, duration);
 }
 
-function move(dir) { 
-  if (!canSendCommand()) return;
-  incrementQueue();
-  fetch('/cmd?go=' + dir).catch(console.log); 
+let movementHeartbeatTimer = null;
+let activeMoveDirection = null;
+
+function sendMoveHeartbeat() {
+  if (!activeMoveDirection) return;
+  fetch('/cmd?go=' + activeMoveDirection).catch(console.log);
 }
 
-function stop() { 
+function move(dir) {
+  if (!canSendCommand()) return;
+  activeMoveDirection = dir;
+  incrementQueue();
+  fetch('/cmd?go=' + dir).catch(console.log);
+  if (movementHeartbeatTimer) clearInterval(movementHeartbeatTimer);
+  movementHeartbeatTimer = setInterval(sendMoveHeartbeat, 400);
+}
+
+function stop() {
+  activeMoveDirection = null;
+  if (movementHeartbeatTimer) {
+    clearInterval(movementHeartbeatTimer);
+    movementHeartbeatTimer = null;
+  }
   commandQueue = 0;
   updateQueueStatus();
-  fetch('/cmd?stop=1').catch(console.log); 
+  fetch('/cmd?stop=1').catch(console.log);
 }
 
 function pose(name) { 

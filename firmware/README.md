@@ -157,6 +157,7 @@ The firmware is built on the Arduino-ESP32 framework. Currently the firmware is 
   - `/api/command`: JSON command endpoint (POST) - supports face-only updates and combined face+movement commands
   - `/getSettings` / `/setSettings`: Parameter configuration
 - **Face-Only Command Support**: The `/api/command` endpoint intelligently detects face-only requests (no `command` field) and updates the display without triggering movement animations.
+- **Communication Timeout Soft Stop**: Continuous movement commands must be refreshed by repeated commands or a heartbeat. If communication is lost, the firmware clears the active continuous movement without latching emergency stop.
 - **Non-Blocking Control Flow**: Instead of `delay()`, the firmware uses a custom `pressingCheck(String cmd, int ms)` function. This function polls `server.handleClient()` and `dnsServer.processNextRequest()` during animation frames, allowing for real-time interruptibility (e.g., immediate stop on button release). This pressingCheck protocol can be used for motion commands like walking to play each motion only when the button is held.
 
 ### Display & Graphics Subsystem
@@ -321,6 +322,8 @@ GET /api/status
 {
   "currentCommand": "forward",
   "currentFace": "walk",
+  "communicationTimedOut": false,
+  "commandTimeoutMs": 1200,
   "networkConnected": true,
   "apIP": "192.168.4.1",
   "networkIP": "192.168.1.100"
@@ -381,12 +384,28 @@ Content-Type: application/json
 }
 ```
 
+#### Heartbeat for Continuous Movement
+
+Continuous movement commands (`forward`, `backward`, `left`, `right`) are automatically soft-stopped if the firmware does not receive a refresh within `commandTimeoutMs`. Network clients can refresh the currently active movement by repeating the same movement command or by sending:
+
+```http
+POST /api/command
+Content-Type: application/json
+
+{
+  "command": "heartbeat"
+}
+```
+
+If the timeout expires, `/api/status` reports `"communicationTimedOut": true`. This is not a latched emergency stop; the next explicit movement command starts a new movement window.
+
 ### Available Commands
 
 **Movement Commands:**
 
 - `forward`, `backward`, `left`, `right` - Continuous movement (loops until stopped)
 - `stop` - Immediately stop current movement
+- `heartbeat` - Refresh the active continuous movement timeout without changing command
 
 **Pose Commands (one-shot animations):**
 
