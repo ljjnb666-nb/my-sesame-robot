@@ -11,7 +11,7 @@
 ## 最新提交
 
 - `575c767 feat: expand robot status api`
-- 当前待提交阶段：`feat: add ai controller foundation`
+- 当前待提交阶段：`feat: add camera prototype foundation`
 
 ## 已完成能力
 
@@ -39,6 +39,10 @@
   - 包含配置、日志、HTTP/JSON 客户端、状态查询、命令发送、心跳、急停接口、有限重连和 Mock 机器人。
   - 提供 `run-tests.ps1`、`run-mock.ps1` 和 `run-cli.ps1`。
   - 单元测试覆盖 Mock 状态、命令别名、急停、拒绝未知命令、心跳刷新和通信超时。
+- 已建立电脑端摄像头原型基础：
+  - 提供摄像头源抽象、Mock 帧源、可选 OpenCV 真实摄像头源和摄像头枚举函数。
+  - 支持 `camera-smoke --mock` 统计 FPS 和延迟。
+  - 视觉模块当前不发送运动命令。
 
 ## 当前开发环境
 
@@ -78,9 +82,11 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 结果：
 
 - 单元测试状态：成功。
-- 测试数量：6。
+- 测试数量：9。
 - CLI 冒烟测试：Mock 服务启动后，`run-cli.ps1 status` 成功返回状态 JSON。
+- 摄像头冒烟测试：`run-cli.ps1 camera-smoke --mock --frames 10` 成功返回 FPS 和延迟统计。
 - 真实机器人连接：未进行。
+- 真实摄像头访问：未进行。
 
 ## 已知问题
 
@@ -90,15 +96,15 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 ## 下一项任务
 
-阶段 4：电脑端摄像头原型。
+阶段 5：人体和物体检测。
 
 最小实现方向：
 
-- 枚举电脑端摄像头。
-- 读取摄像头画面并统计帧率和延迟。
-- 提供可关闭预览界面。
-- 无摄像头时使用测试图片或视频源。
-- 视觉模块不直接控制舵机。
+- 建立检测输出数据结构。
+- 支持 Mock 检测数据。
+- 预留人体和常见物体检测模型接口。
+- 输出目标类别、置信度、中心位置和初步距离估计字段。
+- 模型推理与机器人控制逻辑分离。
 
 ## 尚未完成的真实硬件验证
 
@@ -111,4 +117,5 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 - 验证软件急停在实体机器人运动中的制动效果。
 - 验证解除急停后机器人保持无动作状态。
 - 验证通信超时后连续运动自动停止且不锁存急停。
+- 验证真实摄像头枚举、读取、预览关闭和帧率延迟统计。
 - 验证供电、电池、电机电流和舵机温度是否安全。

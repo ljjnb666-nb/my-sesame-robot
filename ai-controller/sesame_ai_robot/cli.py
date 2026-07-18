@@ -5,6 +5,7 @@ import json
 
 from .client import RobotClient
 from .config import ControllerConfig
+from .camera import CameraMonitor, MockCameraSource, OpenCVCameraSource, enumerate_opencv_cameras
 from .logging_config import configure_logging
 from .mock_robot import MockRobotServer
 
@@ -30,6 +31,14 @@ def build_parser() -> argparse.ArgumentParser:
     mock_parser = subparsers.add_parser("mock-server", help="Run local mock robot server")
     mock_parser.add_argument("--host", default="127.0.0.1")
     mock_parser.add_argument("--port", type=int, default=8765)
+
+    camera_parser = subparsers.add_parser("camera-smoke", help="Read camera frames and print FPS/latency stats")
+    camera_parser.add_argument("--mock", action="store_true", help="Use generated frames instead of a real camera")
+    camera_parser.add_argument("--index", type=int, default=0)
+    camera_parser.add_argument("--frames", type=int, default=30)
+
+    camera_list_parser = subparsers.add_parser("camera-list", help="List OpenCV camera indexes")
+    camera_list_parser.add_argument("--max-index", type=int, default=5)
     return parser
 
 
@@ -45,6 +54,19 @@ def main() -> int:
             server.serve_forever()
         except KeyboardInterrupt:
             return 0
+
+    if args.command == "camera-list":
+        print(json.dumps({"cameras": enumerate_opencv_cameras(args.max_index)}, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "camera-smoke":
+        source = MockCameraSource() if args.mock else OpenCVCameraSource(args.index)
+        try:
+            stats = CameraMonitor(source).collect(args.frames)
+        finally:
+            source.close()
+        print(json.dumps(stats.__dict__, ensure_ascii=False, indent=2))
+        return 0
 
     if args.robot_url:
         config = ControllerConfig(

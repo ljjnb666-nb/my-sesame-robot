@@ -15,6 +15,7 @@
 - 自动重连：状态查询支持有限次数重试。
 - 急停接口：支持 `emergency_stop` 和 `reset_emergency_stop`。
 - Mock 机器人：本地 HTTP 服务模拟固件 JSON API。
+- 摄像头原型：提供 Mock 帧源、可选 OpenCV 摄像头源、帧率和延迟统计。
 - 单元测试：覆盖状态查询、命令别名、急停、心跳和通信超时。
 
 ## 支持的命令
@@ -72,6 +73,23 @@ powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" heartbeat
 powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" emergency-stop
 powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" reset-emergency-stop
 ```
+
+## 摄像头原型
+
+默认建议先使用 Mock 帧源，不打开真实摄像头：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" camera-smoke --mock --frames 30
+```
+
+如果用户已经明确确认允许访问电脑摄像头，并且本地安装了 OpenCV，可枚举和读取真实摄像头：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" camera-list
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" camera-smoke --index 0 --frames 30
+```
+
+视觉模块当前只统计帧率和延迟，不会发送机器人运动命令。
 
 连接真实机器人前必须由用户明确确认，并设置：
 
