@@ -22,6 +22,8 @@
 #define NETWORK_PASS ""  // Your WiFi password
 #define ENABLE_NETWORK_MODE false  // Set to true to enable network connection attempts
 
+#define FIRMWARE_VERSION "ai-robot-v0.2"
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
@@ -230,6 +232,8 @@ bool isContinuousMotionCommand(RobotCommand command);
 bool hasCommunicationTimedOut();
 void refreshContinuousCommandDeadline(const String& command);
 void clearContinuousCommandDeadline();
+String jsonEscape(const String& value);
+const char* getMotionState();
 void completeRobotMotion();
 void clearSerialInputState();
 void executeSerialCommand(const char* command, bool allowLongActions);
@@ -533,6 +537,33 @@ bool hasCommunicationTimedOut() {
 
 bool shouldAbortMotion() { return isEmergencyStopActive() || hasCommunicationTimedOut(); }
 
+String jsonEscape(const String& value) {
+  String escaped = "";
+  for (size_t i = 0; i < value.length(); i++) {
+    char c = value.charAt(i);
+    if (c == '"' || c == '\\') {
+      escaped += '\\';
+      escaped += c;
+    } else if (c == '\n') {
+      escaped += "\\n";
+    } else if (c == '\r') {
+      escaped += "\\r";
+    } else if (c == '\t') {
+      escaped += "\\t";
+    } else {
+      escaped += c;
+    }
+  }
+  return escaped;
+}
+
+const char* getMotionState() {
+  if (isEmergencyStopActive()) return "emergency_stop";
+  if (communicationTimedOut) return "communication_timeout";
+  if (motionInProgress || currentCommand.length() > 0) return "moving";
+  return "idle";
+}
+
 void handleCommandWeb() {
   // We send 200 OK immediately so the web browser doesn't hang waiting for animation to finish
   if (server.hasArg("pose")) {
@@ -600,11 +631,22 @@ void handleSetSettings() {
 
 // API endpoint for network clients to get robot status
 void handleGetStatus() {
+  unsigned long now = millis();
   String json = "{";
-  json += "\"currentCommand\":\"" + currentCommand + "\",";
-  json += "\"currentFace\":\"" + currentFaceName + "\",";
+  json += "\"firmwareVersion\":\"" FIRMWARE_VERSION "\",";
+  json += "\"uptimeMs\":" + String(now) + ",";
+  json += "\"currentCommand\":\"" + jsonEscape(currentCommand) + "\",";
+  json += "\"currentFace\":\"" + jsonEscape(currentFaceName) + "\",";
+  json += "\"motionState\":\"" + String(getMotionState()) + "\",";
+  json += "\"motionInProgress\":" + String(motionInProgress ? "true" : "false") + ",";
+  json += "\"emergencyStopActive\":" + String(isEmergencyStopActive() ? "true" : "false") + ",";
+  json += "\"pendingEmergencyReset\":" + String(pendingEmergencyReset ? "true" : "false") + ",";
   json += "\"communicationTimedOut\":" + String(communicationTimedOut ? "true" : "false") + ",";
   json += "\"commandTimeoutMs\":" + String(COMMUNICATION_TIMEOUT_MS) + ",";
+  json += "\"lastCommandMs\":" + String(lastInputTime) + ",";
+  json += "\"lastCommandAgeMs\":" + String(lastInputTime > 0 ? now - lastInputTime : 0) + ",";
+  json += "\"availableCommands\":[\"stand\",\"rest\",\"forward\",\"backward\",\"left\",\"right\",\"stop\",\"wave\",\"dance\",\"swim\",\"point\",\"pushup\",\"bow\",\"cute\",\"freaky\",\"worm\",\"shake\",\"shrug\",\"dead\",\"crab\",\"emergency_stop\",\"reset_emergency_stop\",\"heartbeat\"],";
+  json += "\"capabilities\":[\"legacy_web\",\"json_api\",\"face_control\",\"latched_emergency_stop\",\"communication_timeout_soft_stop\"],";
   json += "\"networkConnected\":" + String(networkConnected ? "true" : "false") + ",";
   json += "\"apIP\":\"" + WiFi.softAPIP().toString() + "\"";
   if (networkConnected) {

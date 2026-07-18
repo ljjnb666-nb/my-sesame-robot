@@ -320,15 +320,27 @@ GET /api/status
 
 ```json
 {
+  "firmwareVersion": "ai-robot-v0.2",
+  "uptimeMs": 123456,
   "currentCommand": "forward",
   "currentFace": "walk",
+  "motionState": "moving",
+  "motionInProgress": true,
+  "emergencyStopActive": false,
+  "pendingEmergencyReset": false,
   "communicationTimedOut": false,
   "commandTimeoutMs": 1200,
+  "lastCommandMs": 123000,
+  "lastCommandAgeMs": 456,
+  "availableCommands": ["stand", "rest", "forward", "backward", "left", "right", "stop", "wave", "dance", "swim", "point", "pushup", "bow", "cute", "freaky", "worm", "shake", "shrug", "dead", "crab", "emergency_stop", "reset_emergency_stop", "heartbeat"],
+  "capabilities": ["legacy_web", "json_api", "face_control", "latched_emergency_stop", "communication_timeout_soft_stop"],
   "networkConnected": true,
   "apIP": "192.168.4.1",
   "networkIP": "192.168.1.100"
 }
 ```
+
+The status response keeps the original `currentCommand`, `currentFace`, `networkConnected`, `apIP`, and `networkIP` fields for compatibility. New clients should prefer `motionState`, `emergencyStopActive`, `pendingEmergencyReset`, `communicationTimedOut`, `lastCommandAgeMs`, `availableCommands`, and `capabilities` for machine-readable behavior checks.
 
 #### Send Commands
 

@@ -65,7 +65,7 @@
 
 ## 阶段 2：统一状态查询接口
 
-状态：进行中。
+状态：已完成，等待真实硬件验证。
 
 目标：
 
@@ -83,9 +83,14 @@
 - README 提供 JSON 示例。
 - 固件编译通过。
 
+实现记录：
+
+- `/api/status` 保留旧字段，并新增 `firmwareVersion`、`uptimeMs`、`motionState`、`motionInProgress`、`emergencyStopActive`、`pendingEmergencyReset`、`lastCommandMs`、`lastCommandAgeMs`、`availableCommands` 和 `capabilities`。
+- `currentCommand` 和 `currentFace` 输出前进行 JSON 字符串转义。
+
 ## 阶段 3：ai-controller 基础工程
 
-状态：尚未开始。
+状态：进行中。
 
 目标：
 

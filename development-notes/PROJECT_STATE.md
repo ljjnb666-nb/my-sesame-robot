@@ -11,7 +11,7 @@
 ## 最新提交
 
 - `e98609a docs: add project roadmap and state tracking`
-- 当前待提交阶段：`feat: add communication timeout soft stop`
+- 当前待提交阶段：`feat: expand robot status api`
 
 ## 已完成能力
 
@@ -30,6 +30,10 @@
   - 网页方向键按住期间自动发送续租请求。
   - JSON API 支持 `heartbeat` 命令。
   - `/api/status` 增加 `communicationTimedOut` 和 `commandTimeoutMs` 字段。
+- 已扩展统一状态查询接口：
+  - `/api/status` 保留旧字段。
+  - 新增固件版本、运行时间、运动状态、动作执行状态、急停状态、延期解除状态、最后输入时间、可用命令和能力列表。
+  - 对状态中的字符串字段进行 JSON 转义。
 
 ## 当前开发环境
 
@@ -51,7 +55,7 @@ powershell -ExecutionPolicy Bypass -File ".\scripts\firmware-build.ps1"
 结果：
 
 - 编译状态：成功。
-- 程序存储空间：1,132,122 bytes / 1,310,720 bytes，86%。
+- 程序存储空间：1,133,894 bytes / 1,310,720 bytes，86%。
 - 动态内存：79,456 bytes / 327,680 bytes，24%，剩余 248,224 bytes。
 - 重要警告：本次输出未显示编译警告。
 - 输出目录：`.build/output`
@@ -66,14 +70,14 @@ powershell -ExecutionPolicy Bypass -File ".\scripts\firmware-build.ps1"
 
 ## 下一项任务
 
-阶段 2：统一状态查询接口。
+阶段 3：ai-controller 基础工程。
 
 最小实现方向：
 
-- 扩展 `/api/status` 的机器可读字段。
-- 增加当前命令、动作状态、急停状态、延期解除状态、最后命令时间、通信超时状态、当前表情、固件版本和可用功能。
-- 保持旧字段兼容。
-- 更新固件 README 的状态 JSON 示例。
+- 在 `ai-controller/` 建立模块化电脑端控制工程。
+- 提供配置、日志、HTTP/JSON 客户端、心跳、命令发送、状态查询、自动重连、急停接口和 Mock 机器人。
+- 增加单元测试、README 和启动脚本。
+- 先不连接真实机器人。
 
 ## 尚未完成的真实硬件验证
 
