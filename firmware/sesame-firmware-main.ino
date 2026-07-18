@@ -63,6 +63,12 @@ bool idleActive = false;
 bool idleBlinkActive = false;
 unsigned long nextIdleBlinkMs = 0;
 uint8_t idleBlinkRepeatsLeft = 0;
+volatile bool emergencyStopActive = false;
+bool motionInProgress = false;
+bool pendingEmergencyReset = false;
+String pendingSerialCommand = ""; bool pendingSerialCommandAvailable = false;
+char serialCommandBuffer[32];
+byte serialBufferPos = 0;
 
 // WiFi Info Scrolling
 unsigned long lastInputTime = 0;
@@ -198,6 +204,8 @@ enum class RobotCommand : uint8_t {
   Dead,
   Crab,
   Stop,
+  EmergencyStop,
+  ResetEmergencyStop,
   Unknown
 };
 
@@ -209,6 +217,15 @@ void setCurrentCommandFromRobotCommand(RobotCommand command, const String& origi
 void queueRobotCommand(const String& command);
 void dispatchRobotCommand(RobotCommand command);
 void runSerialRobotCommand(const String& command, bool clearAfterDispatch);
+void activateEmergencyStop();
+void requestEmergencyStopReset();
+void resetEmergencyStop();
+bool isEmergencyStopActive();
+bool shouldAbortMotion();
+void completeRobotMotion();
+void clearSerialInputState();
+void executeSerialCommand(const char* command, bool allowLongActions);
+void processSerialInput(bool emergencyOnly = false);
 void setServoAngle(uint8_t channel, int angle);
 void updateFaceBitmap(const unsigned char* bitmap);
 void setFace(const String& faceName);
@@ -258,6 +275,8 @@ RobotCommand parseRobotCommand(const String& command) {
   if (normalized == "dead") return RobotCommand::Dead;
   if (normalized == "crab") return RobotCommand::Crab;
   if (normalized == "stop") return RobotCommand::Stop;
+  if (normalized == "emergency_stop" || normalized == "estop") return RobotCommand::EmergencyStop;
+  if (normalized == "reset_emergency_stop") return RobotCommand::ResetEmergencyStop;
 
   return RobotCommand::Unknown;
 }
@@ -288,17 +307,31 @@ const char* robotCommandToCurrentCommand(RobotCommand command) {
 }
 
 void setCurrentCommandFromRobotCommand(RobotCommand command, const String& originalCommand) {
+  if (command == RobotCommand::EmergencyStop) {
+    activateEmergencyStop();
+    return;
+  }
+
+  if (command == RobotCommand::ResetEmergencyStop) {
+    requestEmergencyStopReset();
+    return;
+  }
+
   if (command == RobotCommand::Stop || command == RobotCommand::None) {
     currentCommand = "";
     return;
   }
 
   if (command == RobotCommand::Unknown) {
-    currentCommand = originalCommand;
+    if (!isEmergencyStopActive()) {
+      currentCommand = originalCommand;
+    }
     return;
   }
 
-  currentCommand = robotCommandToCurrentCommand(command);
+  if (!isEmergencyStopActive()) {
+    currentCommand = robotCommandToCurrentCommand(command);
+  }
 }
 
 void queueRobotCommand(const String& command) {
@@ -306,6 +339,31 @@ void queueRobotCommand(const String& command) {
 }
 
 void dispatchRobotCommand(RobotCommand command) {
+  if (command == RobotCommand::EmergencyStop) {
+    activateEmergencyStop();
+    return;
+  }
+
+  if (command == RobotCommand::ResetEmergencyStop) {
+    requestEmergencyStopReset();
+    return;
+  }
+
+  if (command == RobotCommand::Stop || command == RobotCommand::None) {
+    currentCommand = "";
+    return;
+  }
+
+  if (isEmergencyStopActive()) {
+    return;
+  }
+
+  if (command == RobotCommand::Unknown) {
+    return;
+  }
+
+  motionInProgress = true;
+
   switch (command) {
     case RobotCommand::WalkForward:
       runWalkPose();
@@ -367,12 +425,14 @@ void dispatchRobotCommand(RobotCommand command) {
       runCrabPose();
       break;
     case RobotCommand::Stop:
+    case RobotCommand::EmergencyStop:
+    case RobotCommand::ResetEmergencyStop:
     case RobotCommand::None:
-      currentCommand = "";
-      break;
     case RobotCommand::Unknown:
       break;
   }
+
+  completeRobotMotion();
 }
 
 void runSerialRobotCommand(const String& command, bool clearAfterDispatch) {
@@ -383,6 +443,46 @@ void runSerialRobotCommand(const String& command, bool clearAfterDispatch) {
     currentCommand = "";
   }
 }
+
+void clearSerialInputState() {
+  serialCommandBuffer[0] = '\0';
+  serialBufferPos = 0;
+}
+
+void activateEmergencyStop() {
+  emergencyStopActive = true;
+  currentCommand = "";
+  pendingSerialCommand = "";
+  pendingSerialCommandAvailable = false;
+  pendingEmergencyReset = false;
+  clearSerialInputState();
+}
+
+void resetEmergencyStop() {
+  emergencyStopActive = false;
+  currentCommand = "";
+  pendingEmergencyReset = false;
+}
+
+void requestEmergencyStopReset() {
+  currentCommand = "";
+  if (motionInProgress) {
+    pendingEmergencyReset = true;
+    return;
+  }
+  resetEmergencyStop();
+}
+
+void completeRobotMotion() {
+  motionInProgress = false;
+  if (pendingEmergencyReset) {
+    currentCommand = "";
+    resetEmergencyStop();
+  }
+}
+
+bool isEmergencyStopActive() { return emergencyStopActive; }
+bool shouldAbortMotion() { return isEmergencyStopActive(); }
 
 void handleCommandWeb() {
   // We send 200 OK immediately so the web browser doesn't hang waiting for animation to finish
@@ -545,6 +645,123 @@ void handleApiCommand() {
   }
 }
 
+void executeSerialCommand(const char* command, bool allowLongActions) {
+  int motorNum, angle;
+
+  if(strcmp(command, "emergency_stop") == 0 || strcmp(command, "estop") == 0 || strcmp(command, "rn es") == 0) {
+    activateEmergencyStop();
+  }
+  else if(strcmp(command, "reset_emergency_stop") == 0 || strcmp(command, "rn er") == 0) {
+    requestEmergencyStopReset();
+  }
+  else if (!allowLongActions) {
+    if (!isEmergencyStopActive() && !pendingSerialCommandAvailable) {
+      pendingSerialCommand = command;
+      pendingSerialCommandAvailable = true;
+    }
+  }
+  else if(strcmp(command, "run walk") == 0 || strcmp(command, "rn wf") == 0) runSerialRobotCommand("forward", true);
+  else if(strcmp(command, "rn wb") == 0) runSerialRobotCommand("backward", true);
+  else if(strcmp(command, "rn tl") == 0) runSerialRobotCommand("left", true);
+  else if(strcmp(command, "rn tr") == 0) runSerialRobotCommand("right", true);
+  else if(strcmp(command, "run rest") == 0 || strcmp(command, "rn rs") == 0) runSerialRobotCommand("rest", false);
+  else if(strcmp(command, "run stand") == 0 || strcmp(command, "rn st") == 0) runSerialRobotCommand("stand", false);
+  else if(strcmp(command, "rn wv") == 0) runSerialRobotCommand("wave", false);
+  else if(strcmp(command, "rn dn") == 0) runSerialRobotCommand("dance", false);
+  else if(strcmp(command, "rn sw") == 0) runSerialRobotCommand("swim", false);
+  else if(strcmp(command, "rn pt") == 0) runSerialRobotCommand("point", false);
+  else if(strcmp(command, "rn pu") == 0) runSerialRobotCommand("pushup", false);
+  else if(strcmp(command, "rn bw") == 0) runSerialRobotCommand("bow", false);
+  else if(strcmp(command, "rn ct") == 0) runSerialRobotCommand("cute", false);
+  else if(strcmp(command, "rn fk") == 0) runSerialRobotCommand("freaky", false);
+  else if(strcmp(command, "rn wm") == 0) runSerialRobotCommand("worm", false);
+  else if(strcmp(command, "rn sk") == 0) runSerialRobotCommand("shake", false);
+  else if(strcmp(command, "rn sg") == 0) runSerialRobotCommand("shrug", false);
+  else if(strcmp(command, "rn dd") == 0) runSerialRobotCommand("dead", false);
+  else if(strcmp(command, "rn cb") == 0) runSerialRobotCommand("crab", false);
+  else if (strcmp(command, "subtrim") == 0 || strcmp(command, "st") == 0) {
+    Serial.println("Subtrim values:");
+    for (int i = 0; i < 8; i++) {
+      Serial.print("Motor "); Serial.print(i); Serial.print(": ");
+      if (servoSubtrim[i] >= 0) Serial.print("+");
+      Serial.println(servoSubtrim[i]);
+    }
+  }
+  else if (strcmp(command, "subtrim save") == 0 || strcmp(command, "st save") == 0) {
+    Serial.println("Copy and paste this into your code:");
+    Serial.print("int8_t servoSubtrim[8] = {");
+    for (int i = 0; i < 8; i++) {
+      Serial.print(servoSubtrim[i]);
+      if (i < 7) Serial.print(", ");
+    }
+    Serial.println("};");
+  }
+  else if (strncmp(command, "subtrim reset", 13) == 0 || strncmp(command, "st reset", 8) == 0) {
+    for (int i = 0; i < 8; i++) servoSubtrim[i] = 0;
+    Serial.println("All subtrim values reset to 0");
+  }
+  else if (strncmp(command, "subtrim ", 8) == 0 || strncmp(command, "st ", 3) == 0) {
+    const char* params = (command[1] == 't') ? command + 3 : command + 8;
+    int trimMotor, trimValue;
+    if (sscanf(params, "%d %d", &trimMotor, &trimValue) == 2) {
+      if (trimMotor >= 0 && trimMotor < 8) {
+        if (trimValue >= -90 && trimValue <= 90) {
+          servoSubtrim[trimMotor] = trimValue;
+          Serial.print("Motor "); Serial.print(trimMotor); Serial.print(" subtrim set to ");
+          if (trimValue >= 0) Serial.print("+");
+          Serial.println(trimValue);
+        } else {
+          Serial.println("Subtrim value must be between -90 and +90");
+        }
+      } else {
+        Serial.println("Invalid motor number (0-7)");
+      }
+    }
+  }
+  else if (strncmp(command, "all ", 4) == 0) {
+    if (sscanf(command + 4, "%d", &angle) == 1) {
+      for (int i = 0; i < 8; i++) setServoAngle(i, angle);
+      Serial.print("All servos set to "); Serial.println(angle);
+    }
+  }
+  else if (sscanf(command, "%d %d", &motorNum, &angle) == 2) {
+    if (motorNum >= 0 && motorNum < 8) {
+      setServoAngle(motorNum, angle);
+      Serial.print("Servo "); Serial.print(motorNum); Serial.print(" set to "); Serial.println(angle);
+    } else {
+      Serial.println("Invalid motor number (0-7)");
+    }
+  }
+}
+
+void processSerialInput(bool emergencyOnly) {
+  if (!emergencyOnly && pendingSerialCommandAvailable) {
+    String command = pendingSerialCommand;
+    pendingSerialCommand = "";
+    pendingSerialCommandAvailable = false;
+    if (!isEmergencyStopActive()) {
+      recordInput();
+      executeSerialCommand(command.c_str(), true);
+    }
+  }
+
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (serialBufferPos > 0) {
+        serialCommandBuffer[serialBufferPos] = '\0';
+        recordInput();
+        executeSerialCommand(serialCommandBuffer, !emergencyOnly);
+        serialBufferPos = 0;
+        if (emergencyOnly && shouldAbortMotion()) return;
+      }
+    } else if (serialBufferPos < sizeof(serialCommandBuffer) - 1) {
+      serialBufferPos++;
+      serialCommandBuffer[serialBufferPos - 1] = c;
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   randomSeed(micros());
@@ -678,95 +895,9 @@ void loop() {
   if (currentCommand != "") {
     dispatchRobotCommand(parseRobotCommand(currentCommand));
   }
-  
+
   // Serial CLI for debugging (can be used to diagnose servo position issues and wiring)
-  if (Serial.available()) {
-    static char command_buffer[32];
-    static byte buffer_pos = 0;
-    char c = Serial.read();
-    if (c == '\n' || c == '\r') {
-      if (buffer_pos > 0) {
-        command_buffer[buffer_pos] = '\0';
-        int motorNum, angle;
-        recordInput();
-        if(strcmp(command_buffer, "run walk") == 0 || strcmp(command_buffer, "rn wf") == 0) runSerialRobotCommand("forward", true);
-        else if(strcmp(command_buffer, "rn wb") == 0) runSerialRobotCommand("backward", true);
-        else if(strcmp(command_buffer, "rn tl") == 0) runSerialRobotCommand("left", true);
-        else if(strcmp(command_buffer, "rn tr") == 0) runSerialRobotCommand("right", true);
-        else if(strcmp(command_buffer, "run rest") == 0 || strcmp(command_buffer, "rn rs") == 0) runSerialRobotCommand("rest", false);
-        else if(strcmp(command_buffer, "run stand") == 0 || strcmp(command_buffer, "rn st") == 0) runSerialRobotCommand("stand", false);
-        else if(strcmp(command_buffer, "rn wv") == 0) runSerialRobotCommand("wave", false);
-        else if(strcmp(command_buffer, "rn dn") == 0) runSerialRobotCommand("dance", false);
-        else if(strcmp(command_buffer, "rn sw") == 0) runSerialRobotCommand("swim", false);
-        else if(strcmp(command_buffer, "rn pt") == 0) runSerialRobotCommand("point", false);
-        else if(strcmp(command_buffer, "rn pu") == 0) runSerialRobotCommand("pushup", false);
-        else if(strcmp(command_buffer, "rn bw") == 0) runSerialRobotCommand("bow", false);
-        else if(strcmp(command_buffer, "rn ct") == 0) runSerialRobotCommand("cute", false);
-        else if(strcmp(command_buffer, "rn fk") == 0) runSerialRobotCommand("freaky", false);
-        else if(strcmp(command_buffer, "rn wm") == 0) runSerialRobotCommand("worm", false);
-        else if(strcmp(command_buffer, "rn sk") == 0) runSerialRobotCommand("shake", false);
-        else if(strcmp(command_buffer, "rn sg") == 0) runSerialRobotCommand("shrug", false);
-        else if(strcmp(command_buffer, "rn dd") == 0) runSerialRobotCommand("dead", false);
-        else if(strcmp(command_buffer, "rn cb") == 0) runSerialRobotCommand("crab", false);
-        else if (strcmp(command_buffer, "subtrim") == 0 || strcmp(command_buffer, "st") == 0) {
-          Serial.println("Subtrim values:");
-          for (int i = 0; i < 8; i++) {
-            Serial.print("Motor "); Serial.print(i); Serial.print(": ");
-            if (servoSubtrim[i] >= 0) Serial.print("+");
-            Serial.println(servoSubtrim[i]);
-          }
-        }
-        else if (strcmp(command_buffer, "subtrim save") == 0 || strcmp(command_buffer, "st save") == 0) {
-          Serial.println("Copy and paste this into your code:");
-          Serial.print("int8_t servoSubtrim[8] = {");
-          for (int i = 0; i < 8; i++) {
-            Serial.print(servoSubtrim[i]);
-            if (i < 7) Serial.print(", ");
-          }
-          Serial.println("};");
-        }
-        else if (strncmp(command_buffer, "subtrim reset", 13) == 0 || strncmp(command_buffer, "st reset", 8) == 0) {
-          for (int i = 0; i < 8; i++) servoSubtrim[i] = 0;
-          Serial.println("All subtrim values reset to 0");
-        }
-        else if (strncmp(command_buffer, "subtrim ", 8) == 0 || strncmp(command_buffer, "st ", 3) == 0) {
-          const char* params = (command_buffer[1] == 't') ? command_buffer + 3 : command_buffer + 8;
-          int trimMotor, trimValue;
-          if (sscanf(params, "%d %d", &trimMotor, &trimValue) == 2) {
-            if (trimMotor >= 0 && trimMotor < 8) {
-              if (trimValue >= -90 && trimValue <= 90) {
-                servoSubtrim[trimMotor] = trimValue;
-                Serial.print("Motor "); Serial.print(trimMotor); Serial.print(" subtrim set to ");
-                if (trimValue >= 0) Serial.print("+");
-                Serial.println(trimValue);
-              } else {
-                Serial.println("Subtrim value must be between -90 and +90");
-              }
-            } else {
-              Serial.println("Invalid motor number (0-7)");
-            }
-          }
-        }
-        else if (strncmp(command_buffer, "all ", 4) == 0) {
-             if (sscanf(command_buffer + 4, "%d", &angle) == 1) {
-                 for (int i = 0; i < 8; i++) setServoAngle(i, angle);
-                 Serial.print("All servos set to "); Serial.println(angle);
-             }
-        }
-        else if (sscanf(command_buffer, "%d %d", &motorNum, &angle) == 2) {
-             if (motorNum >= 0 && motorNum < 8) {
-                 setServoAngle(motorNum, angle);
-                 Serial.print("Servo "); Serial.print(motorNum); Serial.print(" set to "); Serial.println(angle);
-             } else {
-                 Serial.println("Invalid motor number (0-7)");
-             }
-        }
-        buffer_pos = 0;
-      }
-    } else if (buffer_pos < sizeof(command_buffer) - 1) {
-      command_buffer[buffer_pos++] = c;
-    }
-  }
+  processSerialInput(false);
 }
 
 // Function to update the robot's face
@@ -884,6 +1015,8 @@ void delayWithFace(unsigned long ms) {
     updateAnimatedFace();
     server.handleClient();
     dnsServer.processNextRequest();
+    processSerialInput(true);
+    if (shouldAbortMotion()) return;
     delay(5);
   }
 }
@@ -934,12 +1067,13 @@ void updateIdleBlink() {
 }
 
 // ====== HELPERS ======
-void setServoAngle(uint8_t channel, int angle) { 
-  if (channel < 8) {
-    int adjustedAngle = constrain(angle + servoSubtrim[channel], 0, 180);
-    servos[channel].write(adjustedAngle);
-    delayWithFace(motorCurrentDelay);
-  }
+void setServoAngle(uint8_t channel, int angle) {
+  if (channel >= 8) return;
+  if (isEmergencyStopActive()) return;
+
+  int adjustedAngle = constrain(angle + servoSubtrim[channel], 0, 180);
+  servos[channel].write(adjustedAngle);
+  delayWithFace(motorCurrentDelay);
 }
 
 bool pressingCheck(String cmd, int ms) {
@@ -947,7 +1081,9 @@ bool pressingCheck(String cmd, int ms) {
   while (millis() - start < ms) {
     server.handleClient();
     dnsServer.processNextRequest();
+    processSerialInput(true);
     updateAnimatedFace();
+    if (shouldAbortMotion()) return false;
     if (currentCommand != cmd) {
       runStandPose(1);
       return false;
