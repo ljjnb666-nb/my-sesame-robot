@@ -28,6 +28,7 @@ class MockRobotState:
     communication_timed_out: bool = False
     last_command_at: float = 0.0
     virtual_battery_percent: int = 100
+    virtual_servo_angles: list[int] = field(default_factory=lambda: [90, 90, 90, 90, 90, 90, 90, 90])
     virtual_sensors: dict[str, float | bool] = field(default_factory=lambda: {
         "frontDistanceM": 1.0,
         "leftDistanceM": 1.0,
@@ -63,6 +64,7 @@ class MockRobotState:
             "availableCommands": AVAILABLE_COMMANDS,
             "capabilities": ["json_api", "face_control", "latched_emergency_stop", "communication_timeout_soft_stop", "mock_robot"],
             "virtualBatteryPercent": self.virtual_battery_percent,
+            "virtualServoAngles": self.virtual_servo_angles,
             "virtualSensors": self.virtual_sensors,
             "networkConnected": False,
             "apIP": "127.0.0.1",
@@ -98,10 +100,22 @@ class MockRobotState:
             return {"status": "ok", "message": "Heartbeat accepted"}
         elif command in AVAILABLE_COMMANDS and not self.emergency_stop_active:
             self.current_command = command
+            self._apply_virtual_pose(command)
             self.communication_timed_out = False
 
         self.last_command_at = now
         return {"status": "ok", "message": "Command executed"}
+
+    def _apply_virtual_pose(self, command: str) -> None:
+        poses = {
+            "stand": [90, 90, 90, 90, 90, 90, 90, 90],
+            "rest": [45, 135, 45, 135, 45, 135, 45, 135],
+            "forward": [105, 75, 110, 70, 80, 100, 85, 95],
+            "backward": [75, 105, 70, 110, 100, 80, 95, 85],
+            "left": [120, 95, 120, 95, 60, 85, 60, 85],
+            "right": [60, 85, 60, 85, 120, 95, 120, 95],
+        }
+        self.virtual_servo_angles = poses.get(command, self.virtual_servo_angles)
 
     def apply_timeout(self) -> None:
         if self.current_command not in CONTINUOUS_COMMANDS or not self.last_command_at:

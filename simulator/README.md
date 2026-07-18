@@ -80,6 +80,24 @@ powershell -ExecutionPolicy Bypass -File ".\run-scenarios.ps1" ".\scenarios\emer
 
 初期优先采用简单 2D 界面，不急于使用复杂三维物理引擎。
 
+当前终端 2D 可视化启动命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-visualizer.ps1"
+```
+
+演示模式会循环虚拟命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-visualizer.ps1" --demo
+```
+
+单帧输出用于自动化检查：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-visualizer.ps1" --once --demo
+```
+
 ## 阶段 4：视觉回放测试
 
 目标：

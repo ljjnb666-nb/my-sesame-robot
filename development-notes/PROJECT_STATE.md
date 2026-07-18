@@ -11,7 +11,7 @@
 ## 最新提交
 
 - `1851ad3 feat: add local face identity mock`
-- 当前待提交阶段：`feat: add sensor safety layer`
+- 当前待提交阶段：`feat: add simulator state visualizer`
 
 ## 已完成能力
 
@@ -75,6 +75,10 @@
   - 普通障碍物和低电量输出高级 `stop`。
   - 防跌落、碰撞和过大倾角输出高级 `emergency_stop`。
   - 安全层已接入追踪状态机和 Mock 状态。
+- 已建立模拟系统简单状态可视化：
+  - `simulator/run-visualizer.ps1` 启动终端 2D 状态面板。
+  - 显示当前动作、8 个虚拟舵机角度、急停状态、连接状态、虚拟传感器、电量和 OLED 表情。
+  - Mock 机器人状态提供 `virtualServoAngles`。
 
 ## 当前开发环境
 
@@ -115,6 +119,7 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 - 单元测试状态：成功。
 - 测试数量：27。
+- 模拟器测试数量：5。
 - CLI 冒烟测试：Mock 服务启动后，`run-cli.ps1 status` 成功返回状态 JSON。
 - 摄像头冒烟测试：`run-cli.ps1 camera-smoke --mock --frames 10` 成功返回 FPS 和延迟统计。
 - 检测冒烟测试：`run-cli.ps1 detect-smoke --mock` 成功返回 Mock 人体和物体检测 JSON。
@@ -122,6 +127,7 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 - 模拟场景测试：`simulator/run-scenarios.ps1` 成功运行全部示例场景。
 - 追踪状态机测试：覆盖急停、身份未确认、默认不跟随、障碍物停止和目标偏右转向。
 - 传感器安全层测试：覆盖安全状态、障碍物、碰撞、防跌落、倾角、低电量和状态解析。
+- 可视化冒烟测试：`simulator/run-visualizer.ps1 --once --demo` 成功输出一帧模拟状态。
 - 真实机器人连接：未进行。
 - 真实摄像头访问：未进行。
 
@@ -133,13 +139,14 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 ## 下一项任务
 
-优先任务：继续完善模拟系统阶段 3 简单状态可视化，然后进入阶段 9 语音与大模型助手。
+优先任务：模拟系统阶段 4 视觉回放测试，然后进入阶段 9 语音与大模型助手。
 
 最小实现方向：
 
-- 为模拟器提供简单 2D 或文本状态可视化。
-- 显示当前动作、8 个虚拟舵机角度、急停状态、连接状态、虚拟传感器数据和 OLED 表情。
-- 不接入真实硬件。
+- 支持读取测试图片目录和 Mock 检测结果。
+- 后续支持视频文件。
+- 真实摄像头读取必须等待用户明确确认。
+- 保证视觉模块和机器人控制模块解耦。
 
 ## 尚未完成的真实硬件验证
 
