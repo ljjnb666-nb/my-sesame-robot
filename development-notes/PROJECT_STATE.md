@@ -11,7 +11,7 @@
 ## 最新提交
 
 - `1851ad3 feat: add local face identity mock`
-- 当前待提交阶段：`feat: add simulator state visualizer`
+- 当前待提交阶段：`feat: add vision replay simulator`
 
 ## 已完成能力
 
@@ -79,6 +79,10 @@
   - `simulator/run-visualizer.ps1` 启动终端 2D 状态面板。
   - 显示当前动作、8 个虚拟舵机角度、急停状态、连接状态、虚拟传感器、电量和 OLED 表情。
   - Mock 机器人状态提供 `virtualServoAngles`。
+- 已建立视觉回放测试最小版本：
+  - `simulator/run-vision-replay.ps1` 支持 Mock、测试图片目录和真实摄像头来源。
+  - `simulator/test-images/` 提供可提交 PGM 测试图片。
+  - 视觉回放使用 Mock 检测器输出结构化结果，不发送机器人控制命令。
 
 ## 当前开发环境
 
@@ -119,7 +123,7 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 - 单元测试状态：成功。
 - 测试数量：27。
-- 模拟器测试数量：5。
+- 模拟器测试数量：8。
 - CLI 冒烟测试：Mock 服务启动后，`run-cli.ps1 status` 成功返回状态 JSON。
 - 摄像头冒烟测试：`run-cli.ps1 camera-smoke --mock --frames 10` 成功返回 FPS 和延迟统计。
 - 检测冒烟测试：`run-cli.ps1 detect-smoke --mock` 成功返回 Mock 人体和物体检测 JSON。
@@ -128,6 +132,8 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 - 追踪状态机测试：覆盖急停、身份未确认、默认不跟随、障碍物停止和目标偏右转向。
 - 传感器安全层测试：覆盖安全状态、障碍物、碰撞、防跌落、倾角、低电量和状态解析。
 - 可视化冒烟测试：`simulator/run-visualizer.ps1 --once --demo` 成功输出一帧模拟状态。
+- 视觉回放测试：Mock 来源和测试图片目录来源均通过自动化测试。
+- 真实摄像头测试：用户已允许访问；本机 Python 缺少 `cv2`，摄像头枚举和读取返回清晰错误并以非零退出码结束。
 - 真实机器人连接：未进行。
 - 真实摄像头访问：未进行。
 
@@ -136,6 +142,7 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 - 真实硬件急停、解除急停、网页控制和串口路径尚未在实体机器人上验证。
 - 通信超时软停止尚未在实体机器人连续运动中验证。
 - 默认 AP 密码仍出现在上游固件文档和示例中；生产使用前应更改。
+- 真实摄像头读取依赖 OpenCV；当前环境 `ModuleNotFoundError: No module named 'cv2'`。
 
 ## 下一项任务
 

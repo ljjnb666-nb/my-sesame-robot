@@ -93,6 +93,8 @@ powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" camera-list
 powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" camera-smoke --index 0 --frames 30
 ```
 
+真实摄像头路径需要本机 Python 可导入 `cv2`。
+
 视觉模块当前只统计帧率和延迟，不会发送机器人运动命令。
 
 ## 检测原型

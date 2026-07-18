@@ -66,11 +66,19 @@ def main() -> int:
             return 0
 
     if args.command == "camera-list":
-        print(json.dumps({"cameras": enumerate_opencv_cameras(args.max_index)}, ensure_ascii=False, indent=2))
+        try:
+            print(json.dumps({"cameras": enumerate_opencv_cameras(args.max_index)}, ensure_ascii=False, indent=2))
+        except RuntimeError as exc:
+            print(json.dumps({"error": str(exc)}, ensure_ascii=False, indent=2))
+            return 1
         return 0
 
     if args.command == "camera-smoke":
-        source = MockCameraSource() if args.mock else OpenCVCameraSource(args.index)
+        try:
+            source = MockCameraSource() if args.mock else OpenCVCameraSource(args.index)
+        except RuntimeError as exc:
+            print(json.dumps({"error": str(exc)}, ensure_ascii=False, indent=2))
+            return 1
         try:
             stats = CameraMonitor(source).collect(args.frames)
         finally:

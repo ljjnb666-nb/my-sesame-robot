@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import statistics
 import time
 from typing import Protocol
@@ -57,10 +58,35 @@ class MockCameraSource:
         return None
 
 
+class ImageDirectorySource:
+    name = "image-directory"
+
+    def __init__(self, directory: Path):
+        self.directory = directory
+        self._paths = sorted(directory.glob("*.pgm"))
+        if not self._paths:
+            raise RuntimeError(f"no .pgm test images found in {directory}")
+        self._index = 0
+
+    def read(self) -> CameraFrame:
+        path = self._paths[self._index % len(self._paths)]
+        self._index += 1
+        width, height, data = read_pgm(path)
+        return CameraFrame(
+            width=width,
+            height=height,
+            captured_at=time.monotonic(),
+            source=str(path),
+            data=data,
+        )
+
+    def close(self) -> None:
+        return None
+
+
 class OpenCVCameraSource:
     def __init__(self, index: int = 0):
-        import cv2  # type: ignore[import-not-found]
-
+        cv2 = import_opencv()
         self.name = f"opencv-camera-{index}"
         self._cv2 = cv2
         self._capture = cv2.VideoCapture(index)
@@ -86,8 +112,7 @@ class OpenCVCameraSource:
 
 
 def enumerate_opencv_cameras(max_index: int = 5) -> list[int]:
-    import cv2  # type: ignore[import-not-found]
-
+    cv2 = import_opencv()
     found: list[int] = []
     for index in range(max_index + 1):
         capture = cv2.VideoCapture(index)
@@ -97,6 +122,41 @@ def enumerate_opencv_cameras(max_index: int = 5) -> list[int]:
         finally:
             capture.release()
     return found
+
+
+def import_opencv():
+    try:
+        import cv2  # type: ignore[import-not-found]
+        return cv2
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("OpenCV (cv2) is required for real camera access") from exc
+
+
+def read_pgm(path: Path) -> tuple[int, int, bytes]:
+    with path.open("rb") as handle:
+        magic = handle.readline().strip()
+        if magic not in (b"P2", b"P5"):
+            raise RuntimeError(f"unsupported PGM format in {path}")
+        width, height = _read_pgm_dimensions(handle)
+        max_value = int(handle.readline().strip())
+        if max_value != 255:
+            raise RuntimeError(f"unsupported PGM max value in {path}")
+        if magic == b"P2":
+            values = [int(value) for value in handle.read().split()]
+            data = bytes(values)
+        else:
+            data = handle.read(width * height)
+        if len(data) != width * height:
+            raise RuntimeError(f"PGM data length mismatch in {path}")
+        return width, height, data
+
+
+def _read_pgm_dimensions(handle) -> tuple[int, int]:
+    line = handle.readline().strip()
+    while line.startswith(b"#"):
+        line = handle.readline().strip()
+    width_text, height_text = line.split()
+    return int(width_text), int(height_text)
 
 
 class CameraMonitor:

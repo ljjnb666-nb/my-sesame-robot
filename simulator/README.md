@@ -110,6 +110,23 @@ powershell -ExecutionPolicy Bypass -File ".\run-visualizer.ps1" --once --demo
 
 访问真实摄像头前必须等待用户明确确认。
 
+当前启动命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-vision-replay.ps1" --source mock --frames 3
+powershell -ExecutionPolicy Bypass -File ".\run-vision-replay.ps1" --source images --frames 3
+```
+
+用户明确确认允许访问真实摄像头后，可运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-vision-replay.ps1" --source camera --index 0 --frames 3
+```
+
+真实摄像头来源依赖本机 Python 安装 OpenCV（`cv2`）。如果缺少 OpenCV，Mock 和测试图片目录回放仍可正常运行。
+
+当前视觉回放使用 Mock 检测器，只输出结构化检测结果，不发送机器人控制命令。
+
 ## 阶段 5：硬件在环测试
 
 必须等待用户明确确认，并按顺序执行：
