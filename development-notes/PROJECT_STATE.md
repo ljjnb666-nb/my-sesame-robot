@@ -10,8 +10,8 @@
 
 ## 最新提交
 
-- `575c767 feat: expand robot status api`
-- 当前待提交阶段：`feat: add camera prototype foundation`
+- `02eac9b feat: add camera prototype foundation`
+- 当前待提交阶段：`feat: add mock object detection pipeline`
 
 ## 已完成能力
 
@@ -43,6 +43,11 @@
   - 提供摄像头源抽象、Mock 帧源、可选 OpenCV 真实摄像头源和摄像头枚举函数。
   - 支持 `camera-smoke --mock` 统计 FPS 和延迟。
   - 视觉模块当前不发送运动命令。
+- 已建立人体和物体检测基础：
+  - 提供检测输出数据结构和检测器协议。
+  - Mock 检测器默认输出 `person` 和 `object`。
+  - 检测结果包含类别、置信度、中心点、边界框和初步距离估计字段。
+  - 检测模块与机器人控制客户端分离，不发送动作命令。
 
 ## 当前开发环境
 
@@ -82,9 +87,10 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 结果：
 
 - 单元测试状态：成功。
-- 测试数量：9。
+- 测试数量：12。
 - CLI 冒烟测试：Mock 服务启动后，`run-cli.ps1 status` 成功返回状态 JSON。
 - 摄像头冒烟测试：`run-cli.ps1 camera-smoke --mock --frames 10` 成功返回 FPS 和延迟统计。
+- 检测冒烟测试：`run-cli.ps1 detect-smoke --mock` 成功返回 Mock 人体和物体检测 JSON。
 - 真实机器人连接：未进行。
 - 真实摄像头访问：未进行。
 
@@ -96,15 +102,15 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 ## 下一项任务
 
-阶段 5：人体和物体检测。
+阶段 6：主人人脸注册和识别。
 
 最小实现方向：
 
-- 建立检测输出数据结构。
-- 支持 Mock 检测数据。
-- 预留人体和常见物体检测模型接口。
-- 输出目标类别、置信度、中心位置和初步距离估计字段。
-- 模型推理与机器人控制逻辑分离。
+- 建立本地人脸身份数据目录规范。
+- 默认不提交照片和人脸特征。
+- 建立人脸注册、删除和识别接口。
+- 支持 Mock 人脸识别数据和置信度阈值。
+- 无法确认身份时不得默认当作主人。
 
 ## 尚未完成的真实硬件验证
 

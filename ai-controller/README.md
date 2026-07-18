@@ -16,7 +16,8 @@
 - 急停接口：支持 `emergency_stop` 和 `reset_emergency_stop`。
 - Mock 机器人：本地 HTTP 服务模拟固件 JSON API。
 - 摄像头原型：提供 Mock 帧源、可选 OpenCV 摄像头源、帧率和延迟统计。
-- 单元测试：覆盖状态查询、命令别名、急停、心跳和通信超时。
+- 检测原型：提供检测结果数据结构、Mock 人体/物体检测器和 JSON 输出。
+- 单元测试：覆盖状态查询、命令别名、急停、心跳、通信超时、摄像头 Mock 和检测 Mock。
 
 ## 支持的命令
 
@@ -90,6 +91,24 @@ powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" camera-smoke --index 0 
 ```
 
 视觉模块当前只统计帧率和延迟，不会发送机器人运动命令。
+
+## 检测原型
+
+使用 Mock 帧源和 Mock 检测器执行一次检测：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" detect-smoke --mock
+```
+
+检测输出包含：
+
+- `label`：目标类别，例如 `person` 或 `object`。
+- `confidence`：置信度。
+- `center`：目标中心点。
+- `box`：目标边界框。
+- `distanceM`：初步距离估计接口，可为空。
+
+检测模块只生成结构化感知结果，不会直接调用机器人动作接口。
 
 连接真实机器人前必须由用户明确确认，并设置：
 

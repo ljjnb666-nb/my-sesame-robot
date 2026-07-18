@@ -8,6 +8,7 @@ from .config import ControllerConfig
 from .camera import CameraMonitor, MockCameraSource, OpenCVCameraSource, enumerate_opencv_cameras
 from .logging_config import configure_logging
 from .mock_robot import MockRobotServer
+from .detection import MockObjectDetector, result_to_jsonable
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,6 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     camera_list_parser = subparsers.add_parser("camera-list", help="List OpenCV camera indexes")
     camera_list_parser.add_argument("--max-index", type=int, default=5)
+
+    detect_parser = subparsers.add_parser("detect-smoke", help="Run one object detection pass")
+    detect_parser.add_argument("--mock", action="store_true", help="Use generated frames and mock detections")
+    detect_parser.add_argument("--index", type=int, default=0)
     return parser
 
 
@@ -66,6 +71,16 @@ def main() -> int:
         finally:
             source.close()
         print(json.dumps(stats.__dict__, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "detect-smoke":
+        source = MockCameraSource() if args.mock else OpenCVCameraSource(args.index)
+        try:
+            frame = source.read()
+            result = MockObjectDetector().detect(frame)
+        finally:
+            source.close()
+        print(json.dumps(result_to_jsonable(result), ensure_ascii=False, indent=2))
         return 0
 
     if args.robot_url:
