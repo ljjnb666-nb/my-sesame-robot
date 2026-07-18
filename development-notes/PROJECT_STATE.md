@@ -5,13 +5,13 @@
 ## 当前分支
 
 - 本地分支：`feat/ai-robot-v0`
-- 上游跟踪：当前未配置本地分支上游跟踪。
+- 上游跟踪：`origin/feat/ai-robot-v0`
 - 远端：`origin` 指向 `https://github.com/ljjnb666-nb/my-sesame-robot.git`
 
 ## 最新提交
 
-- `e98609a docs: add project roadmap and state tracking`
-- 当前待提交阶段：`feat: expand robot status api`
+- `575c767 feat: expand robot status api`
+- 当前待提交阶段：`feat: add ai controller foundation`
 
 ## 已完成能力
 
@@ -34,6 +34,11 @@
   - `/api/status` 保留旧字段。
   - 新增固件版本、运行时间、运动状态、动作执行状态、急停状态、延期解除状态、最后输入时间、可用命令和能力列表。
   - 对状态中的字符串字段进行 JSON 转义。
+- 已建立 ai-controller 基础工程：
+  - Python 标准库实现，无第三方运行依赖。
+  - 包含配置、日志、HTTP/JSON 客户端、状态查询、命令发送、心跳、急停接口、有限重连和 Mock 机器人。
+  - 提供 `run-tests.ps1`、`run-mock.ps1` 和 `run-cli.ps1`。
+  - 单元测试覆盖 Mock 状态、命令别名、急停、拒绝未知命令、心跳刷新和通信超时。
 
 ## 当前开发环境
 
@@ -60,24 +65,40 @@ powershell -ExecutionPolicy Bypass -File ".\scripts\firmware-build.ps1"
 - 重要警告：本次输出未显示编译警告。
 - 输出目录：`.build/output`
 
+## 最近一次 AI 控制器验证
+
+命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
+```
+
+执行目录：`ai-controller/`
+
+结果：
+
+- 单元测试状态：成功。
+- 测试数量：6。
+- CLI 冒烟测试：Mock 服务启动后，`run-cli.ps1 status` 成功返回状态 JSON。
+- 真实机器人连接：未进行。
+
 ## 已知问题
 
-- 本地 `feat/ai-robot-v0` 当前未配置上游跟踪分支。
-- 2026-07-18 查询 `origin/feat/ai-robot-v0` 时 GitHub HTTPS 连接中断，未能确认远端状态。
 - 真实硬件急停、解除急停、网页控制和串口路径尚未在实体机器人上验证。
 - 通信超时软停止尚未在实体机器人连续运动中验证。
 - 默认 AP 密码仍出现在上游固件文档和示例中；生产使用前应更改。
 
 ## 下一项任务
 
-阶段 3：ai-controller 基础工程。
+阶段 4：电脑端摄像头原型。
 
 最小实现方向：
 
-- 在 `ai-controller/` 建立模块化电脑端控制工程。
-- 提供配置、日志、HTTP/JSON 客户端、心跳、命令发送、状态查询、自动重连、急停接口和 Mock 机器人。
-- 增加单元测试、README 和启动脚本。
-- 先不连接真实机器人。
+- 枚举电脑端摄像头。
+- 读取摄像头画面并统计帧率和延迟。
+- 提供可关闭预览界面。
+- 无摄像头时使用测试图片或视频源。
+- 视觉模块不直接控制舵机。
 
 ## 尚未完成的真实硬件验证
 

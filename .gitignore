@@ -2,3 +2,8 @@
 
 # Arduino CLI build output
 .build/
+
+# Python local outputs
+__pycache__/
+*.py[cod]
+.venv/

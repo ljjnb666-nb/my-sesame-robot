@@ -1,0 +1,9 @@
+[project]
+name = "sesame-ai-controller"
+version = "0.1.0"
+description = "Computer-side controller foundation for Sesame AI Robot"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
