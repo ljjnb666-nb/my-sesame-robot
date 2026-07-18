@@ -34,6 +34,8 @@ class MockRobotState:
         "rightDistanceM": 1.0,
         "cliffDetected": False,
         "collisionDetected": False,
+        "imuRollDeg": 0.0,
+        "imuPitchDeg": 0.0,
     })
 
     def as_status(self) -> dict[str, Any]:

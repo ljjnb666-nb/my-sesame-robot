@@ -1,0 +1,14 @@
+{
+  "name": "cliff_emergency",
+  "steps": [
+    {
+      "name": "inject cliff sensor",
+      "setSensor": {
+        "cliffDetected": true
+      },
+      "expect": {
+        "virtualSensors.cliffDetected": true
+      }
+    }
+  ]
+}

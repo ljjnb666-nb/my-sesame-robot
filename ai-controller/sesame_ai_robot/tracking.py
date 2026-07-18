@@ -6,6 +6,7 @@ from typing import Any
 
 from .detection import DetectionResult
 from .face_identity import FaceRecognitionResult
+from .safety import SafetyAssessment, SafetyMonitor, SensorSnapshot
 
 
 class TrackingState(str, Enum):
@@ -30,12 +31,12 @@ class TrackingConfig:
     allow_following: bool = False
     target_label: str = "person"
     center_deadband: float = 0.12
-    safe_front_distance_m: float = 0.35
 
 
 class TrackingController:
-    def __init__(self, config: TrackingConfig | None = None):
+    def __init__(self, config: TrackingConfig | None = None, safety_monitor: SafetyMonitor | None = None):
         self.config = config or TrackingConfig()
+        self.safety_monitor = safety_monitor or SafetyMonitor()
         self.state = TrackingState.IDLE
         self._had_target = False
 
@@ -63,11 +64,10 @@ class TrackingController:
             return TrackingDecision(self.state, None, "target is not visible")
 
         self._had_target = True
-        sensors = robot_status.get("virtualSensors", {})
-        front_distance = sensors.get("frontDistanceM")
-        if isinstance(front_distance, (int, float)) and front_distance < self.config.safe_front_distance_m:
+        safety = self.safety_monitor.assess(SensorSnapshot.from_robot_status(robot_status))
+        if not safety.allows_motion:
             self.state = TrackingState.STOPPED
-            return TrackingDecision(self.state, "stop", "front obstacle is too close")
+            return TrackingDecision(self.state, safety.command, safety.reason)
 
         if not self.config.allow_following:
             self.state = TrackingState.TRACKING

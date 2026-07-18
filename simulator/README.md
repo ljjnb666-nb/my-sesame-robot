@@ -56,6 +56,8 @@ powershell -ExecutionPolicy Bypass -File ".\run-scenarios.ps1" ".\scenarios\emer
 - `scenarios/emergency_stop.json`
 - `scenarios/communication_timeout.json`
 - `scenarios/obstacle.json`
+- `scenarios/cliff_emergency.json`
+- `scenarios/low_battery.json`
 
 场景步骤支持：
 

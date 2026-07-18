@@ -1,0 +1,12 @@
+{
+  "name": "low_battery",
+  "steps": [
+    {
+      "name": "set low battery",
+      "setBatteryPercent": 12,
+      "expect": {
+        "virtualBatteryPercent": 12
+      }
+    }
+  ]
+}
