@@ -176,8 +176,39 @@ const FaceFpsEntry faceFpsEntries[] = {
   { "talk_thinking", 1 },
 };
 
+enum class RobotCommand : uint8_t {
+  None,
+  Stand,
+  Rest,
+  WalkForward,
+  WalkBackward,
+  TurnLeft,
+  TurnRight,
+  Wave,
+  Dance,
+  Swim,
+  Point,
+  Pushup,
+  Bow,
+  Cute,
+  Freaky,
+  Worm,
+  Shake,
+  Shrug,
+  Dead,
+  Crab,
+  Stop,
+  Unknown
+};
+
 
 // Prototypes
+RobotCommand parseRobotCommand(const String& command);
+const char* robotCommandToCurrentCommand(RobotCommand command);
+void setCurrentCommandFromRobotCommand(RobotCommand command, const String& originalCommand);
+void queueRobotCommand(const String& command);
+void dispatchRobotCommand(RobotCommand command);
+void runSerialRobotCommand(const String& command, bool clearAfterDispatch);
 void setServoAngle(uint8_t channel, int angle);
 void updateFaceBitmap(const unsigned char* bitmap);
 void setFace(const String& faceName);
@@ -201,22 +232,174 @@ void handleRoot() {
   server.send(200, "text/html", index_html);
 }
 
+RobotCommand parseRobotCommand(const String& command) {
+  String normalized = command;
+  normalized.trim();
+  normalized.toLowerCase();
+
+  if (normalized.length() == 0) return RobotCommand::None;
+  if (normalized == "stand") return RobotCommand::Stand;
+  if (normalized == "rest") return RobotCommand::Rest;
+  if (normalized == "forward" || normalized == "walk_forward") return RobotCommand::WalkForward;
+  if (normalized == "backward" || normalized == "walk_backward") return RobotCommand::WalkBackward;
+  if (normalized == "left" || normalized == "turn_left") return RobotCommand::TurnLeft;
+  if (normalized == "right" || normalized == "turn_right") return RobotCommand::TurnRight;
+  if (normalized == "wave") return RobotCommand::Wave;
+  if (normalized == "dance") return RobotCommand::Dance;
+  if (normalized == "swim") return RobotCommand::Swim;
+  if (normalized == "point") return RobotCommand::Point;
+  if (normalized == "pushup") return RobotCommand::Pushup;
+  if (normalized == "bow") return RobotCommand::Bow;
+  if (normalized == "cute") return RobotCommand::Cute;
+  if (normalized == "freaky") return RobotCommand::Freaky;
+  if (normalized == "worm") return RobotCommand::Worm;
+  if (normalized == "shake") return RobotCommand::Shake;
+  if (normalized == "shrug") return RobotCommand::Shrug;
+  if (normalized == "dead") return RobotCommand::Dead;
+  if (normalized == "crab") return RobotCommand::Crab;
+  if (normalized == "stop") return RobotCommand::Stop;
+
+  return RobotCommand::Unknown;
+}
+
+const char* robotCommandToCurrentCommand(RobotCommand command) {
+  switch (command) {
+    case RobotCommand::Stand: return "stand";
+    case RobotCommand::Rest: return "rest";
+    case RobotCommand::WalkForward: return "forward";
+    case RobotCommand::WalkBackward: return "backward";
+    case RobotCommand::TurnLeft: return "left";
+    case RobotCommand::TurnRight: return "right";
+    case RobotCommand::Wave: return "wave";
+    case RobotCommand::Dance: return "dance";
+    case RobotCommand::Swim: return "swim";
+    case RobotCommand::Point: return "point";
+    case RobotCommand::Pushup: return "pushup";
+    case RobotCommand::Bow: return "bow";
+    case RobotCommand::Cute: return "cute";
+    case RobotCommand::Freaky: return "freaky";
+    case RobotCommand::Worm: return "worm";
+    case RobotCommand::Shake: return "shake";
+    case RobotCommand::Shrug: return "shrug";
+    case RobotCommand::Dead: return "dead";
+    case RobotCommand::Crab: return "crab";
+    default: return "";
+  }
+}
+
+void setCurrentCommandFromRobotCommand(RobotCommand command, const String& originalCommand) {
+  if (command == RobotCommand::Stop || command == RobotCommand::None) {
+    currentCommand = "";
+    return;
+  }
+
+  if (command == RobotCommand::Unknown) {
+    currentCommand = originalCommand;
+    return;
+  }
+
+  currentCommand = robotCommandToCurrentCommand(command);
+}
+
+void queueRobotCommand(const String& command) {
+  setCurrentCommandFromRobotCommand(parseRobotCommand(command), command);
+}
+
+void dispatchRobotCommand(RobotCommand command) {
+  switch (command) {
+    case RobotCommand::WalkForward:
+      runWalkPose();
+      break;
+    case RobotCommand::WalkBackward:
+      runWalkBackward();
+      break;
+    case RobotCommand::TurnLeft:
+      runTurnLeft();
+      break;
+    case RobotCommand::TurnRight:
+      runTurnRight();
+      break;
+    case RobotCommand::Rest:
+      runRestPose();
+      if (currentCommand == "rest") currentCommand = "";
+      break;
+    case RobotCommand::Stand:
+      runStandPose(1);
+      if (currentCommand == "stand") currentCommand = "";
+      break;
+    case RobotCommand::Wave:
+      runWavePose();
+      break;
+    case RobotCommand::Dance:
+      runDancePose();
+      break;
+    case RobotCommand::Swim:
+      runSwimPose();
+      break;
+    case RobotCommand::Point:
+      runPointPose();
+      break;
+    case RobotCommand::Pushup:
+      runPushupPose();
+      break;
+    case RobotCommand::Bow:
+      runBowPose();
+      break;
+    case RobotCommand::Cute:
+      runCutePose();
+      break;
+    case RobotCommand::Freaky:
+      runFreakyPose();
+      break;
+    case RobotCommand::Worm:
+      runWormPose();
+      break;
+    case RobotCommand::Shake:
+      runShakePose();
+      break;
+    case RobotCommand::Shrug:
+      runShrugPose();
+      break;
+    case RobotCommand::Dead:
+      runDeadPose();
+      break;
+    case RobotCommand::Crab:
+      runCrabPose();
+      break;
+    case RobotCommand::Stop:
+    case RobotCommand::None:
+      currentCommand = "";
+      break;
+    case RobotCommand::Unknown:
+      break;
+  }
+}
+
+void runSerialRobotCommand(const String& command, bool clearAfterDispatch) {
+  RobotCommand robotCommand = parseRobotCommand(command);
+  setCurrentCommandFromRobotCommand(robotCommand, command);
+  dispatchRobotCommand(robotCommand);
+  if (clearAfterDispatch) {
+    currentCommand = "";
+  }
+}
+
 void handleCommandWeb() {
   // We send 200 OK immediately so the web browser doesn't hang waiting for animation to finish
   if (server.hasArg("pose")) {
-    currentCommand = server.arg("pose");
-    recordInput();
-    exitIdle();
-    server.send(200, "text/plain", "OK"); 
-  } 
-  else if (server.hasArg("go")) {
-    currentCommand = server.arg("go");
+    queueRobotCommand(server.arg("pose"));
     recordInput();
     exitIdle();
     server.send(200, "text/plain", "OK");
-  } 
+  }
+  else if (server.hasArg("go")) {
+    queueRobotCommand(server.arg("go"));
+    recordInput();
+    exitIdle();
+    server.send(200, "text/plain", "OK");
+  }
   else if (server.hasArg("stop")) {
-    currentCommand = "";
+    queueRobotCommand("stop");
     recordInput();
     server.send(200, "text/plain", "OK");
   }
@@ -347,13 +530,15 @@ void handleApiCommand() {
     return;
   }
   
+  RobotCommand robotCommand = parseRobotCommand(command);
+
   // Execute command
-  if (command == "stop") {
-    currentCommand = "";
+  if (robotCommand == RobotCommand::Stop) {
+    setCurrentCommandFromRobotCommand(robotCommand, command);
     recordInput();
     server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command stopped\"}");
   } else {
-    currentCommand = command;
+    setCurrentCommandFromRobotCommand(robotCommand, command);
     recordInput();
     exitIdle();
     server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command executed\"}");
@@ -491,26 +676,7 @@ void loop() {
   updateWifiInfoScroll();
 
   if (currentCommand != "") {
-    String cmd = currentCommand;
-    if (cmd == "forward") runWalkPose();
-    else if (cmd == "backward") runWalkBackward();
-    else if (cmd == "left") runTurnLeft();
-    else if (cmd == "right") runTurnRight();
-    else if (cmd == "rest") { runRestPose(); if (currentCommand == "rest") currentCommand = ""; }
-    else if (cmd == "stand") { runStandPose(1); if (currentCommand == "stand") currentCommand = ""; }
-    else if (cmd == "wave") runWavePose();
-    else if (cmd == "dance") runDancePose();
-    else if (cmd == "swim") runSwimPose();
-    else if (cmd == "point") runPointPose();
-    else if (cmd == "pushup") runPushupPose();
-    else if (cmd == "bow") runBowPose();
-    else if (cmd == "cute") runCutePose();
-    else if (cmd == "freaky") runFreakyPose();
-    else if (cmd == "worm") runWormPose();
-    else if (cmd == "shake") runShakePose();
-    else if (cmd == "shrug") runShrugPose();
-    else if (cmd == "dead") runDeadPose();
-    else if (cmd == "crab") runCrabPose();
+    dispatchRobotCommand(parseRobotCommand(currentCommand));
   }
   
   // Serial CLI for debugging (can be used to diagnose servo position issues and wiring)
@@ -523,25 +689,25 @@ void loop() {
         command_buffer[buffer_pos] = '\0';
         int motorNum, angle;
         recordInput();
-        if(strcmp(command_buffer, "run walk") == 0 || strcmp(command_buffer, "rn wf") == 0) { currentCommand = "forward"; runWalkPose(); currentCommand = ""; }
-        else if(strcmp(command_buffer, "rn wb") == 0) { currentCommand = "backward"; runWalkBackward(); currentCommand = ""; }
-        else if(strcmp(command_buffer, "rn tl") == 0) { currentCommand = "left"; runTurnLeft(); currentCommand = ""; }
-        else if(strcmp(command_buffer, "rn tr") == 0) { currentCommand = "right"; runTurnRight(); currentCommand = ""; }
-        else if(strcmp(command_buffer, "run rest") == 0 || strcmp(command_buffer, "rn rs") == 0) runRestPose();
-        else if(strcmp(command_buffer, "run stand") == 0 || strcmp(command_buffer, "rn st") == 0) runStandPose(1);
-        else if(strcmp(command_buffer, "rn wv") == 0) { currentCommand = "wave"; runWavePose(); }
-        else if(strcmp(command_buffer, "rn dn") == 0) { currentCommand = "dance"; runDancePose(); }
-        else if(strcmp(command_buffer, "rn sw") == 0) { currentCommand = "swim"; runSwimPose(); }
-        else if(strcmp(command_buffer, "rn pt") == 0) { currentCommand = "point"; runPointPose(); }
-        else if(strcmp(command_buffer, "rn pu") == 0) { currentCommand = "pushup"; runPushupPose(); }
-        else if(strcmp(command_buffer, "rn bw") == 0) { currentCommand = "bow"; runBowPose(); }
-        else if(strcmp(command_buffer, "rn ct") == 0) { currentCommand = "cute"; runCutePose(); }
-        else if(strcmp(command_buffer, "rn fk") == 0) { currentCommand = "freaky"; runFreakyPose(); }
-        else if(strcmp(command_buffer, "rn wm") == 0) { currentCommand = "worm"; runWormPose(); }
-        else if(strcmp(command_buffer, "rn sk") == 0) { currentCommand = "shake"; runShakePose(); }
-        else if(strcmp(command_buffer, "rn sg") == 0) { currentCommand = "shrug"; runShrugPose(); }
-        else if(strcmp(command_buffer, "rn dd") == 0) { currentCommand = "dead"; runDeadPose(); }
-        else if(strcmp(command_buffer, "rn cb") == 0) { currentCommand = "crab"; runCrabPose(); }
+        if(strcmp(command_buffer, "run walk") == 0 || strcmp(command_buffer, "rn wf") == 0) runSerialRobotCommand("forward", true);
+        else if(strcmp(command_buffer, "rn wb") == 0) runSerialRobotCommand("backward", true);
+        else if(strcmp(command_buffer, "rn tl") == 0) runSerialRobotCommand("left", true);
+        else if(strcmp(command_buffer, "rn tr") == 0) runSerialRobotCommand("right", true);
+        else if(strcmp(command_buffer, "run rest") == 0 || strcmp(command_buffer, "rn rs") == 0) runSerialRobotCommand("rest", false);
+        else if(strcmp(command_buffer, "run stand") == 0 || strcmp(command_buffer, "rn st") == 0) runSerialRobotCommand("stand", false);
+        else if(strcmp(command_buffer, "rn wv") == 0) runSerialRobotCommand("wave", false);
+        else if(strcmp(command_buffer, "rn dn") == 0) runSerialRobotCommand("dance", false);
+        else if(strcmp(command_buffer, "rn sw") == 0) runSerialRobotCommand("swim", false);
+        else if(strcmp(command_buffer, "rn pt") == 0) runSerialRobotCommand("point", false);
+        else if(strcmp(command_buffer, "rn pu") == 0) runSerialRobotCommand("pushup", false);
+        else if(strcmp(command_buffer, "rn bw") == 0) runSerialRobotCommand("bow", false);
+        else if(strcmp(command_buffer, "rn ct") == 0) runSerialRobotCommand("cute", false);
+        else if(strcmp(command_buffer, "rn fk") == 0) runSerialRobotCommand("freaky", false);
+        else if(strcmp(command_buffer, "rn wm") == 0) runSerialRobotCommand("worm", false);
+        else if(strcmp(command_buffer, "rn sk") == 0) runSerialRobotCommand("shake", false);
+        else if(strcmp(command_buffer, "rn sg") == 0) runSerialRobotCommand("shrug", false);
+        else if(strcmp(command_buffer, "rn dd") == 0) runSerialRobotCommand("dead", false);
+        else if(strcmp(command_buffer, "rn cb") == 0) runSerialRobotCommand("crab", false);
         else if (strcmp(command_buffer, "subtrim") == 0 || strcmp(command_buffer, "st") == 0) {
           Serial.println("Subtrim values:");
           for (int i = 0; i < 8; i++) {
