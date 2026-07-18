@@ -10,6 +10,7 @@ from .logging_config import configure_logging
 from .mock_robot import MockRobotServer
 from .detection import MockObjectDetector, result_to_jsonable
 from .face_identity import FaceIdentity, MockFaceRecognizer, recognition_to_jsonable
+from .assistant import AssistantPolicy, MockAssistantPipeline, plan_to_jsonable
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,6 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
     face_parser = subparsers.add_parser("face-id-smoke", help="Run one face identity pass with mock data")
     face_parser.add_argument("--confidence", type=float, default=0.82)
     face_parser.add_argument("--threshold", type=float, default=0.75)
+
+    assistant_parser = subparsers.add_parser("assistant-smoke", help="Run the local mock assistant pipeline")
+    assistant_parser.add_argument("text")
+    assistant_parser.add_argument("--allow-motion", action="store_true")
     return parser
 
 
@@ -100,6 +105,11 @@ def main() -> int:
         identity = FaceIdentity(identity_id="owner-local", display_name="Owner", created_at=0.0)
         result = MockFaceRecognizer(identity, args.confidence, args.threshold).identify(MockCameraSource().read())
         print(json.dumps(recognition_to_jsonable(result), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "assistant-smoke":
+        pipeline = MockAssistantPipeline(policy=AssistantPolicy(allow_motion_commands=args.allow_motion))
+        print(json.dumps(plan_to_jsonable(pipeline.handle_text(args.text)), ensure_ascii=False, indent=2))
         return 0
 
     if args.robot_url:

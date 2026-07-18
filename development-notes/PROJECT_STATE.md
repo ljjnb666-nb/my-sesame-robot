@@ -11,7 +11,7 @@
 ## 最新提交
 
 - `1851ad3 feat: add local face identity mock`
-- 当前待提交阶段：`feat: add vision replay simulator`
+- 当前待提交阶段：`feat: add mock voice assistant pipeline`
 
 ## 已完成能力
 
@@ -83,6 +83,10 @@
   - `simulator/run-vision-replay.ps1` 支持 Mock、测试图片目录和真实摄像头来源。
   - `simulator/test-images/` 提供可提交 PGM 测试图片。
   - 视觉回放使用 Mock 检测器输出结构化结果，不发送机器人控制命令。
+- 已建立 Mock 语音与大模型助手最小版本：
+  - 本地 Mock 唤醒词、Mock 语音识别、Mock 语言模型、Mock TTS 和命令权限策略。
+  - 不调用真实麦克风、不录音、不访问云端服务、不需要 API Key。
+  - 运动命令默认被拒绝，急停命令始终允许。
 
 ## 当前开发环境
 
@@ -122,7 +126,7 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 结果：
 
 - 单元测试状态：成功。
-- 测试数量：27。
+- 测试数量：33。
 - 模拟器测试数量：8。
 - CLI 冒烟测试：Mock 服务启动后，`run-cli.ps1 status` 成功返回状态 JSON。
 - 摄像头冒烟测试：`run-cli.ps1 camera-smoke --mock --frames 10` 成功返回 FPS 和延迟统计。
@@ -134,6 +138,7 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 - 可视化冒烟测试：`simulator/run-visualizer.ps1 --once --demo` 成功输出一帧模拟状态。
 - 视觉回放测试：Mock 来源和测试图片目录来源均通过自动化测试。
 - 真实摄像头测试：用户已允许访问；本机 Python 缺少 `cv2`，摄像头枚举和读取返回清晰错误并以非零退出码结束。
+- 助手流水线测试：覆盖无唤醒词忽略、急停允许、表情设置、表达动作、默认拒绝运动和模拟允许运动。
 - 真实机器人连接：未进行。
 - 真实摄像头访问：未进行。
 
@@ -146,14 +151,13 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 ## 下一项任务
 
-优先任务：模拟系统阶段 4 视觉回放测试，然后进入阶段 9 语音与大模型助手。
+优先任务：阶段 10 板载 AI 主控制器迁移评估准备。
 
 最小实现方向：
 
-- 支持读取测试图片目录和 Mock 检测结果。
-- 后续支持视频文件。
-- 真实摄像头读取必须等待用户明确确认。
-- 保证视觉模块和机器人控制模块解耦。
+- 在电脑端功能稳定后评估板载计算方案。
+- 先形成候选硬件和接口需求文档，不采购、不连接真实硬件。
+- 继续完善模拟系统和 Mock 测试覆盖。
 
 ## 尚未完成的真实硬件验证
 

@@ -20,7 +20,8 @@
 - 人脸身份原型：提供本地身份目录规范、注册/删除接口和 Mock 识别阈值逻辑。
 - 传感器安全层：评估距离、防跌落、碰撞、IMU 姿态和电池状态。
 - 追踪状态机：消费检测、身份和机器人状态，默认不发送真实跟随命令。
-- 单元测试：覆盖状态查询、命令别名、急停、心跳、通信超时、摄像头 Mock、检测 Mock、人脸身份 Mock、传感器安全层和追踪状态机。
+- Mock 语音与大模型助手：提供本地唤醒词、语音识别、语言模型、TTS 和命令权限流水线。
+- 单元测试：覆盖状态查询、命令别名、急停、心跳、通信超时、摄像头 Mock、检测 Mock、人脸身份 Mock、传感器安全层、追踪状态机和助手策略。
 
 ## 支持的命令
 
@@ -150,6 +151,23 @@ powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" face-id-smoke --confide
 - 距离、电池、防跌落、碰撞和 IMU 姿态由 `SafetyMonitor` 统一评估。
 - 普通障碍物和低电量输出 `stop`，防跌落、碰撞和过大倾角输出 `emergency_stop`。
 - 即使允许跟随，也只输出 `walk_forward`、`turn_left`、`turn_right` 等高级命令，不直接控制舵机。
+
+## Mock 语音与大模型助手
+
+当前只使用本地 Mock，不调用麦克风、录音、云端语音服务或大模型 API。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" assistant-smoke "sesame happy face"
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" assistant-smoke "sesame emergency stop"
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" assistant-smoke "sesame follow me"
+```
+
+默认策略：
+
+- `emergency_stop`、`stop`、`reset_emergency_stop` 始终允许。
+- `wave` 等表达动作允许。
+- `walk_forward`、`turn_left`、`turn_right` 等运动命令默认拒绝。
+- 模拟测试可用 `--allow-motion` 显式开启运动命令计划，但仍只输出计划，不直接控制真实机器人。
 
 连接真实机器人前必须由用户明确确认，并设置：
 
