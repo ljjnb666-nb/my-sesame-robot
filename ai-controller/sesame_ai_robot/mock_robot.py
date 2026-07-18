@@ -27,6 +27,14 @@ class MockRobotState:
     pending_emergency_reset: bool = False
     communication_timed_out: bool = False
     last_command_at: float = 0.0
+    virtual_battery_percent: int = 100
+    virtual_sensors: dict[str, float | bool] = field(default_factory=lambda: {
+        "frontDistanceM": 1.0,
+        "leftDistanceM": 1.0,
+        "rightDistanceM": 1.0,
+        "cliffDetected": False,
+        "collisionDetected": False,
+    })
 
     def as_status(self) -> dict[str, Any]:
         self.apply_timeout()
@@ -52,6 +60,8 @@ class MockRobotState:
             "lastCommandAgeMs": last_command_age_ms,
             "availableCommands": AVAILABLE_COMMANDS,
             "capabilities": ["json_api", "face_control", "latched_emergency_stop", "communication_timeout_soft_stop", "mock_robot"],
+            "virtualBatteryPercent": self.virtual_battery_percent,
+            "virtualSensors": self.virtual_sensors,
             "networkConnected": False,
             "apIP": "127.0.0.1",
         }

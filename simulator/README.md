@@ -38,11 +38,33 @@ powershell -ExecutionPolicy Bypass -File "..\ai-controller\run-mock.ps1"
 - 输出测试通过或失败。
 - 覆盖正常行走、急停、解除、断联和障碍物场景。
 
-计划启动命令：
+启动命令：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ".\run-scenarios.ps1"
 ```
+
+也可以只运行单个场景：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-scenarios.ps1" ".\scenarios\emergency_stop.json"
+```
+
+当前示例场景：
+
+- `scenarios/normal_walk.json`
+- `scenarios/emergency_stop.json`
+- `scenarios/communication_timeout.json`
+- `scenarios/obstacle.json`
+
+场景步骤支持：
+
+- `command`：发送机器人命令。
+- `face`：设置 OLED 表情。
+- `setSensor`：设置虚拟传感器。
+- `setBatteryPercent`：设置虚拟电量。
+- `waitMs`：等待指定毫秒数。
+- `expect`：断言状态字段，支持 `virtualSensors.frontDistanceM` 这样的点路径。
 
 ## 阶段 3：简单状态可视化
 

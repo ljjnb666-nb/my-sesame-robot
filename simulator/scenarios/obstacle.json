@@ -1,0 +1,23 @@
+{
+  "name": "obstacle",
+  "steps": [
+    {
+      "name": "inject obstacle sensor",
+      "setSensor": {
+        "frontDistanceM": 0.18,
+        "collisionDetected": true
+      },
+      "expect": {
+        "virtualSensors.frontDistanceM": 0.18,
+        "virtualSensors.collisionDetected": true
+      }
+    },
+    {
+      "name": "battery is virtual",
+      "setBatteryPercent": 76,
+      "expect": {
+        "virtualBatteryPercent": 76
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "communication_timeout",
+  "steps": [
+    {
+      "name": "start walking",
+      "command": "walk_forward",
+      "expect": {
+        "currentCommand": "forward",
+        "communicationTimedOut": false
+      }
+    },
+    {
+      "name": "wait past timeout",
+      "waitMs": 1300,
+      "expect": {
+        "currentCommand": "",
+        "communicationTimedOut": true,
+        "motionState": "communication_timeout"
+      }
+    }
+  ]
+}

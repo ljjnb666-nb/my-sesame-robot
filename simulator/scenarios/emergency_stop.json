@@ -1,0 +1,30 @@
+{
+  "name": "emergency_stop",
+  "steps": [
+    {
+      "name": "start walking",
+      "command": "walk_forward",
+      "expect": {
+        "currentCommand": "forward"
+      }
+    },
+    {
+      "name": "latch emergency stop",
+      "command": "emergency_stop",
+      "expect": {
+        "currentCommand": "",
+        "emergencyStopActive": true,
+        "motionState": "emergency_stop"
+      }
+    },
+    {
+      "name": "reset stays idle",
+      "command": "reset_emergency_stop",
+      "expect": {
+        "currentCommand": "",
+        "emergencyStopActive": false,
+        "motionState": "idle"
+      }
+    }
+  ]
+}

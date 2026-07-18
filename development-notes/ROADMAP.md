@@ -239,7 +239,7 @@
 
 ### 模拟阶段 1：Mock 机器人服务器
 
-状态：部分完成，待迁移到 `simulator/` 长期入口。
+状态：已完成最小版本。
 
 目标：
 
@@ -254,9 +254,15 @@
 - API 字段尽量兼容真实 ESP32。
 - 自动测试覆盖急停、解除急停、普通停止和通信超时。
 
+实现记录：
+
+- `ai-controller` Mock 机器人服务器已提供兼容 `/api/status` 和 `/api/command` 的本地服务。
+- Mock 状态新增 `virtualBatteryPercent` 和 `virtualSensors`。
+- 当前不连接任何真实硬件。
+
 ### 模拟阶段 2：场景测试运行器
 
-状态：尚未开始。
+状态：已完成最小版本。
 
 目标：
 
@@ -271,6 +277,13 @@
 - `simulator/scenarios/` 中有可运行示例场景。
 - `simulator/tests/` 中有自动化测试。
 - 场景失败时输出明确失败步骤和实际状态。
+
+实现记录：
+
+- `simulator/scenario_runner.py` 可从 JSON 文件读取步骤。
+- `simulator/run-scenarios.ps1` 可一条 PowerShell 命令运行全部场景或单个场景。
+- 示例场景覆盖正常行走、急停、解除急停、通信超时和障碍物传感器状态。
+- 自动测试位于 `simulator/tests/`。
 
 ### 模拟阶段 3：简单状态可视化
 

@@ -11,7 +11,7 @@
 ## 最新提交
 
 - `1851ad3 feat: add local face identity mock`
-- 当前待提交阶段：`docs: add simulator development plan`
+- 当前待提交阶段：`feat: add simulator scenario runner`
 
 ## 已完成能力
 
@@ -59,6 +59,11 @@
   - 模拟服务器必须尽可能兼容真实 ESP32 HTTP/JSON 协议。
   - 每个重要安全功能都必须有自动化场景测试。
   - 涉及真实 ESP32、串口、舵机、摄像头或传感器时必须暂停询问用户。
+- 已建立电脑模拟测试系统最小版本：
+  - `simulator/run-scenarios.ps1` 可运行 JSON 场景。
+  - 示例场景覆盖正常行走、急停、解除急停、通信超时和障碍物传感器状态。
+  - Mock 机器人状态包含虚拟电量和虚拟传感器。
+  - 场景运行器自动启动本地 Mock 服务器，不连接真实硬件。
 
 ## 当前开发环境
 
@@ -103,6 +108,7 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 - 摄像头冒烟测试：`run-cli.ps1 camera-smoke --mock --frames 10` 成功返回 FPS 和延迟统计。
 - 检测冒烟测试：`run-cli.ps1 detect-smoke --mock` 成功返回 Mock 人体和物体检测 JSON。
 - 人脸识别冒烟测试：`run-cli.ps1 face-id-smoke` 成功返回 Mock 身份确认 JSON。
+- 模拟场景测试：`simulator/run-scenarios.ps1` 成功运行全部示例场景。
 - 真实机器人连接：未进行。
 - 真实摄像头访问：未进行。
 
