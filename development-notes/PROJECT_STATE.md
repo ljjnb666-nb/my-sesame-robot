@@ -10,8 +10,8 @@
 
 ## 最新提交
 
-- `02eac9b feat: add camera prototype foundation`
-- 当前待提交阶段：`feat: add local face identity mock`
+- `1851ad3 feat: add local face identity mock`
+- 当前待提交阶段：`docs: add simulator development plan`
 
 ## 已完成能力
 
@@ -53,6 +53,12 @@
   - `ai-controller/data/` 已加入忽略规则，用于未来本地私有人脸数据。
   - Mock 识别必须达到阈值才确认身份，无法确认时不会默认当作主人。
   - 当前未采集真实照片，未生成真实人脸特征。
+- 已决定将电脑模拟测试系统纳入长期开发流程：
+  - AI 控制器后续通过配置选择 `mock`、`simulator` 或 `real_robot`。
+  - 上层控制代码不得因为模拟或真实环境不同而重写。
+  - 模拟服务器必须尽可能兼容真实 ESP32 HTTP/JSON 协议。
+  - 每个重要安全功能都必须有自动化场景测试。
+  - 涉及真实 ESP32、串口、舵机、摄像头或传感器时必须暂停询问用户。
 
 ## 当前开发环境
 
@@ -108,9 +114,16 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 ## 下一项任务
 
-阶段 7：视觉追踪和安全跟随。
+优先任务：电脑模拟测试系统阶段 1 和阶段 2。
 
 最小实现方向：
+
+- 在 `simulator/` 下建立长期入口。
+- 将 Mock 机器人服务器能力整理为模拟服务器。
+- 建立 JSON 场景测试运行器。
+- 覆盖正常行走、急停、解除、断联和障碍物场景。
+
+后续任务：阶段 7 视觉追踪和安全跟随。
 
 - 建立高层状态机：`idle`、`searching`、`tracking`、`following`、`target_lost`、`stopped`、`emergency_stop`。
 - 只消费检测/身份结果和机器人状态，不直接控制舵机。
