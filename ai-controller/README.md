@@ -18,7 +18,8 @@
 - 摄像头原型：提供 Mock 帧源、可选 OpenCV 摄像头源、帧率和延迟统计。
 - 检测原型：提供检测结果数据结构、Mock 人体/物体检测器和 JSON 输出。
 - 人脸身份原型：提供本地身份目录规范、注册/删除接口和 Mock 识别阈值逻辑。
-- 单元测试：覆盖状态查询、命令别名、急停、心跳、通信超时、摄像头 Mock、检测 Mock 和人脸身份 Mock。
+- 追踪状态机：消费检测、身份和机器人状态，默认不发送真实跟随命令。
+- 单元测试：覆盖状态查询、命令别名、急停、心跳、通信超时、摄像头 Mock、检测 Mock、人脸身份 Mock 和追踪状态机。
 
 ## 支持的命令
 
@@ -125,6 +126,26 @@ powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" face-id-smoke --confide
 - 私有人脸数据默认放在 `ai-controller/data/`。
 - `ai-controller/data/` 已加入仓库忽略规则。
 - 未确认身份时，识别结果不会默认当作主人。
+
+## 追踪状态机
+
+`TrackingController` 建立高层状态：
+
+- `idle`
+- `searching`
+- `tracking`
+- `following`
+- `target_lost`
+- `stopped`
+- `emergency_stop`
+
+安全规则：
+
+- 急停状态优先于所有追踪行为。
+- 身份未确认时不进入跟随。
+- 默认 `allow_following=false`，只输出 `tracking` 状态，不发送运动命令。
+- 前方障碍物过近时输出 `stop`。
+- 即使允许跟随，也只输出 `walk_forward`、`turn_left`、`turn_right` 等高级命令，不直接控制舵机。
 
 连接真实机器人前必须由用户明确确认，并设置：
 

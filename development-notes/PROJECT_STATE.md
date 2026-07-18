@@ -11,7 +11,7 @@
 ## 最新提交
 
 - `1851ad3 feat: add local face identity mock`
-- 当前待提交阶段：`feat: add simulator scenario runner`
+- 当前待提交阶段：`feat: add tracking state machine`
 
 ## 已完成能力
 
@@ -64,6 +64,12 @@
   - 示例场景覆盖正常行走、急停、解除急停、通信超时和障碍物传感器状态。
   - Mock 机器人状态包含虚拟电量和虚拟传感器。
   - 场景运行器自动启动本地 Mock 服务器，不连接真实硬件。
+- 已建立视觉追踪和安全跟随最小状态机：
+  - 支持 `idle`、`searching`、`tracking`、`following`、`target_lost`、`stopped`、`emergency_stop`。
+  - 急停和通信超时优先于追踪。
+  - 身份未确认时不进入跟随。
+  - 默认不允许真实跟随，只输出 tracking 状态。
+  - 障碍物过近时输出高级 `stop` 命令。
 
 ## 当前开发环境
 
@@ -103,12 +109,13 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 结果：
 
 - 单元测试状态：成功。
-- 测试数量：15。
+- 测试数量：20。
 - CLI 冒烟测试：Mock 服务启动后，`run-cli.ps1 status` 成功返回状态 JSON。
 - 摄像头冒烟测试：`run-cli.ps1 camera-smoke --mock --frames 10` 成功返回 FPS 和延迟统计。
 - 检测冒烟测试：`run-cli.ps1 detect-smoke --mock` 成功返回 Mock 人体和物体检测 JSON。
 - 人脸识别冒烟测试：`run-cli.ps1 face-id-smoke` 成功返回 Mock 身份确认 JSON。
 - 模拟场景测试：`simulator/run-scenarios.ps1` 成功运行全部示例场景。
+- 追踪状态机测试：覆盖急停、身份未确认、默认不跟随、障碍物停止和目标偏右转向。
 - 真实机器人连接：未进行。
 - 真实摄像头访问：未进行。
 
@@ -120,21 +127,14 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 ## 下一项任务
 
-优先任务：电脑模拟测试系统阶段 1 和阶段 2。
+优先任务：阶段 8 传感器安全层。
 
 最小实现方向：
 
-- 在 `simulator/` 下建立长期入口。
-- 将 Mock 机器人服务器能力整理为模拟服务器。
-- 建立 JSON 场景测试运行器。
-- 覆盖正常行走、急停、解除、断联和障碍物场景。
-
-后续任务：阶段 7 视觉追踪和安全跟随。
-
-- 建立高层状态机：`idle`、`searching`、`tracking`、`following`、`target_lost`、`stopped`、`emergency_stop`。
-- 只消费检测/身份结果和机器人状态，不直接控制舵机。
-- 未完成真实避障前，不允许开启真实自主跟随。
-- 通过 Mock 场景覆盖目标丢失、误识别、急停和超时。
+- 建立前方距离、左右距离、防跌落、IMU 姿态、碰撞和电池状态抽象。
+- 真实硬件型号未确定前只使用 Mock。
+- 将安全层接入追踪状态机和模拟场景测试。
+- 不连接真实传感器。
 
 ## 尚未完成的真实硬件验证
 
