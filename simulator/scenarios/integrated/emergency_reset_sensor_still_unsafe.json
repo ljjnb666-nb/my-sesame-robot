@@ -1,0 +1,35 @@
+{
+  "name": "emergency_reset_sensor_still_unsafe",
+  "runtimeFlow": true,
+  "config": {
+    "initialRobotStatus": {
+      "emergencyStopActive": true
+    }
+  },
+  "steps": [
+    {
+      "name": "request reset confirmation",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "expect": {
+        "confirmationState": "requested"
+      }
+    },
+    {
+      "name": "sensor changes before submit",
+      "sensor": {
+        "cliffDetected": true
+      },
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "submitConfirmation": "last",
+      "expect": {
+        "command": null,
+        "confirmationState": "context_changed",
+        "sentCommand": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "unknown_command_rejected",
+  "steps": [
+    {
+      "name": "unknown assistant command is rejected before client",
+      "assistant": {
+        "commands": [
+          "fly"
+        ]
+      },
+      "expect": {
+        "command": null,
+        "source": "arbiter"
+      },
+      "expectBlockedActions": [
+        "fly"
+      ]
+    }
+  ]
+}

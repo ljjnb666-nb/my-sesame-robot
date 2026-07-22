@@ -6,6 +6,7 @@
 #include <ESP32Servo.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <ArduinoJson.h>
 #include "face-bitmaps.h"
 #include "movement-sequences.h"
 #include "captive-portal.h"
@@ -21,6 +22,8 @@
 #define NETWORK_SSID ""  // Your WiFi network name
 #define NETWORK_PASS ""  // Your WiFi password
 #define ENABLE_NETWORK_MODE false  // Set to true to enable network connection attempts
+
+#define FIRMWARE_VERSION "ai-robot-v0.2"
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -63,6 +66,14 @@ bool idleActive = false;
 bool idleBlinkActive = false;
 unsigned long nextIdleBlinkMs = 0;
 uint8_t idleBlinkRepeatsLeft = 0;
+volatile bool emergencyStopActive = false;
+bool motionInProgress = false;
+bool pendingEmergencyReset = false;
+bool communicationTimedOut = false;
+unsigned long lastContinuousCommandMs = 0;
+String pendingSerialCommand = ""; bool pendingSerialCommandAvailable = false;
+char serialCommandBuffer[32];
+byte serialBufferPos = 0;
 
 // WiFi Info Scrolling
 unsigned long lastInputTime = 0;
@@ -103,6 +114,8 @@ int8_t servoSubtrim[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 int frameDelay = 100;
 int walkCycles = 10;
 int motorCurrentDelay = 20; // ms delay between motor movements to prevent over-current
+const unsigned long COMMUNICATION_TIMEOUT_MS = 1200;
+const size_t MAX_API_BODY_BYTES = 512;
 
 struct FaceEntry {
   const char* name;
@@ -176,8 +189,58 @@ const FaceFpsEntry faceFpsEntries[] = {
   { "talk_thinking", 1 },
 };
 
+enum class RobotCommand : uint8_t {
+  None,
+  Stand,
+  Rest,
+  WalkForward,
+  WalkBackward,
+  TurnLeft,
+  TurnRight,
+  Wave,
+  Dance,
+  Swim,
+  Point,
+  Pushup,
+  Bow,
+  Cute,
+  Freaky,
+  Worm,
+  Shake,
+  Shrug,
+  Dead,
+  Crab,
+  Stop,
+  EmergencyStop,
+  ResetEmergencyStop,
+  Heartbeat,
+  Unknown
+};
+
 
 // Prototypes
+RobotCommand parseRobotCommand(const String& command);
+const char* robotCommandToCurrentCommand(RobotCommand command);
+void setCurrentCommandFromRobotCommand(RobotCommand command, const String& originalCommand);
+void queueRobotCommand(const String& command);
+void dispatchRobotCommand(RobotCommand command);
+void runSerialRobotCommand(const String& command, bool clearAfterDispatch);
+void activateEmergencyStop();
+void requestEmergencyStopReset();
+void resetEmergencyStop();
+bool isEmergencyStopActive();
+bool shouldAbortMotion();
+bool isContinuousMotionCommand(RobotCommand command);
+bool hasCommunicationTimedOut();
+void refreshContinuousCommandDeadline(const String& command);
+void clearContinuousCommandDeadline();
+String jsonEscape(const String& value);
+const char* getMotionState();
+void completeRobotMotion();
+void clearSerialInputState();
+void sendApiError(int statusCode, const char* error, const char* message);
+void executeSerialCommand(const char* command, bool allowLongActions);
+void processSerialInput(bool emergencyOnly = false);
 void setServoAngle(uint8_t channel, int angle);
 void updateFaceBitmap(const unsigned char* bitmap);
 void setFace(const String& faceName);
@@ -189,6 +252,7 @@ void enterIdle();
 void exitIdle();
 void updateIdleBlink();
 int getFaceFpsForName(const String& faceName);
+bool isSupportedFaceName(const String& faceName);
 bool pressingCheck(String cmd, int ms);
 void handleGetSettings();
 void handleSetSettings();
@@ -201,22 +265,342 @@ void handleRoot() {
   server.send(200, "text/html", index_html);
 }
 
+RobotCommand parseRobotCommand(const String& command) {
+  String normalized = command;
+  normalized.trim();
+  normalized.toLowerCase();
+
+  if (normalized.length() == 0) return RobotCommand::None;
+  if (normalized == "stand") return RobotCommand::Stand;
+  if (normalized == "rest") return RobotCommand::Rest;
+  if (normalized == "forward" || normalized == "walk_forward") return RobotCommand::WalkForward;
+  if (normalized == "backward" || normalized == "walk_backward") return RobotCommand::WalkBackward;
+  if (normalized == "left" || normalized == "turn_left") return RobotCommand::TurnLeft;
+  if (normalized == "right" || normalized == "turn_right") return RobotCommand::TurnRight;
+  if (normalized == "wave") return RobotCommand::Wave;
+  if (normalized == "dance") return RobotCommand::Dance;
+  if (normalized == "swim") return RobotCommand::Swim;
+  if (normalized == "point") return RobotCommand::Point;
+  if (normalized == "pushup") return RobotCommand::Pushup;
+  if (normalized == "bow") return RobotCommand::Bow;
+  if (normalized == "cute") return RobotCommand::Cute;
+  if (normalized == "freaky") return RobotCommand::Freaky;
+  if (normalized == "worm") return RobotCommand::Worm;
+  if (normalized == "shake") return RobotCommand::Shake;
+  if (normalized == "shrug") return RobotCommand::Shrug;
+  if (normalized == "dead") return RobotCommand::Dead;
+  if (normalized == "crab") return RobotCommand::Crab;
+  if (normalized == "stop") return RobotCommand::Stop;
+  if (normalized == "emergency_stop" || normalized == "estop") return RobotCommand::EmergencyStop;
+  if (normalized == "reset_emergency_stop") return RobotCommand::ResetEmergencyStop;
+  if (normalized == "heartbeat" || normalized == "ping") return RobotCommand::Heartbeat;
+
+  return RobotCommand::Unknown;
+}
+
+const char* robotCommandToCurrentCommand(RobotCommand command) {
+  switch (command) {
+    case RobotCommand::Stand: return "stand";
+    case RobotCommand::Rest: return "rest";
+    case RobotCommand::WalkForward: return "forward";
+    case RobotCommand::WalkBackward: return "backward";
+    case RobotCommand::TurnLeft: return "left";
+    case RobotCommand::TurnRight: return "right";
+    case RobotCommand::Wave: return "wave";
+    case RobotCommand::Dance: return "dance";
+    case RobotCommand::Swim: return "swim";
+    case RobotCommand::Point: return "point";
+    case RobotCommand::Pushup: return "pushup";
+    case RobotCommand::Bow: return "bow";
+    case RobotCommand::Cute: return "cute";
+    case RobotCommand::Freaky: return "freaky";
+    case RobotCommand::Worm: return "worm";
+    case RobotCommand::Shake: return "shake";
+    case RobotCommand::Shrug: return "shrug";
+    case RobotCommand::Dead: return "dead";
+    case RobotCommand::Crab: return "crab";
+    default: return "";
+  }
+}
+
+void setCurrentCommandFromRobotCommand(RobotCommand command, const String& originalCommand) {
+  if (command == RobotCommand::EmergencyStop) {
+    activateEmergencyStop();
+    return;
+  }
+
+  if (command == RobotCommand::ResetEmergencyStop) {
+    requestEmergencyStopReset();
+    return;
+  }
+
+  if (command == RobotCommand::Stop || command == RobotCommand::None) {
+    currentCommand = "";
+    clearContinuousCommandDeadline();
+    return;
+  }
+
+  if (command == RobotCommand::Unknown) {
+    return;
+  }
+
+  if (!isEmergencyStopActive()) {
+    currentCommand = robotCommandToCurrentCommand(command);
+  }
+}
+
+void queueRobotCommand(const String& command) {
+  setCurrentCommandFromRobotCommand(parseRobotCommand(command), command);
+}
+
+void dispatchRobotCommand(RobotCommand command) {
+  if (command == RobotCommand::EmergencyStop) {
+    activateEmergencyStop();
+    return;
+  }
+
+  if (command == RobotCommand::ResetEmergencyStop) {
+    requestEmergencyStopReset();
+    return;
+  }
+
+  if (command == RobotCommand::Stop || command == RobotCommand::None) {
+    currentCommand = "";
+    clearContinuousCommandDeadline();
+    return;
+  }
+
+  if (command == RobotCommand::Heartbeat) {
+    refreshContinuousCommandDeadline(currentCommand);
+    return;
+  }
+
+  if (isEmergencyStopActive()) {
+    return;
+  }
+
+  if (command == RobotCommand::Unknown) {
+    return;
+  }
+
+  motionInProgress = true;
+
+  switch (command) {
+    case RobotCommand::WalkForward:
+      runWalkPose();
+      break;
+    case RobotCommand::WalkBackward:
+      runWalkBackward();
+      break;
+    case RobotCommand::TurnLeft:
+      runTurnLeft();
+      break;
+    case RobotCommand::TurnRight:
+      runTurnRight();
+      break;
+    case RobotCommand::Rest:
+      runRestPose();
+      if (currentCommand == "rest") currentCommand = "";
+      break;
+    case RobotCommand::Stand:
+      runStandPose(1);
+      if (currentCommand == "stand") currentCommand = "";
+      break;
+    case RobotCommand::Wave:
+      runWavePose();
+      break;
+    case RobotCommand::Dance:
+      runDancePose();
+      break;
+    case RobotCommand::Swim:
+      runSwimPose();
+      break;
+    case RobotCommand::Point:
+      runPointPose();
+      break;
+    case RobotCommand::Pushup:
+      runPushupPose();
+      break;
+    case RobotCommand::Bow:
+      runBowPose();
+      break;
+    case RobotCommand::Cute:
+      runCutePose();
+      break;
+    case RobotCommand::Freaky:
+      runFreakyPose();
+      break;
+    case RobotCommand::Worm:
+      runWormPose();
+      break;
+    case RobotCommand::Shake:
+      runShakePose();
+      break;
+    case RobotCommand::Shrug:
+      runShrugPose();
+      break;
+    case RobotCommand::Dead:
+      runDeadPose();
+      break;
+    case RobotCommand::Crab:
+      runCrabPose();
+      break;
+    case RobotCommand::Stop:
+    case RobotCommand::EmergencyStop:
+    case RobotCommand::ResetEmergencyStop:
+    case RobotCommand::Heartbeat:
+    case RobotCommand::None:
+    case RobotCommand::Unknown:
+      break;
+  }
+
+  completeRobotMotion();
+}
+
+void runSerialRobotCommand(const String& command, bool clearAfterDispatch) {
+  RobotCommand robotCommand = parseRobotCommand(command);
+  setCurrentCommandFromRobotCommand(robotCommand, command);
+  dispatchRobotCommand(robotCommand);
+  if (clearAfterDispatch) {
+    currentCommand = "";
+  }
+}
+
+void clearSerialInputState() {
+  serialCommandBuffer[0] = '\0';
+  serialBufferPos = 0;
+}
+
+void activateEmergencyStop() {
+  emergencyStopActive = true;
+  currentCommand = "";
+  clearContinuousCommandDeadline();
+  pendingSerialCommand = "";
+  pendingSerialCommandAvailable = false;
+  pendingEmergencyReset = false;
+  clearSerialInputState();
+}
+
+void resetEmergencyStop() {
+  emergencyStopActive = false;
+  currentCommand = "";
+  clearContinuousCommandDeadline();
+  pendingEmergencyReset = false;
+}
+
+void requestEmergencyStopReset() {
+  currentCommand = "";
+  if (motionInProgress) {
+    pendingEmergencyReset = true;
+    return;
+  }
+  resetEmergencyStop();
+}
+
+void completeRobotMotion() {
+  motionInProgress = false;
+  if (pendingEmergencyReset) {
+    currentCommand = "";
+    resetEmergencyStop();
+  }
+}
+
+bool isEmergencyStopActive() { return emergencyStopActive; }
+
+bool isContinuousMotionCommand(RobotCommand command) {
+  return command == RobotCommand::WalkForward ||
+         command == RobotCommand::WalkBackward ||
+         command == RobotCommand::TurnLeft ||
+         command == RobotCommand::TurnRight;
+}
+
+void refreshContinuousCommandDeadline(const String& command) {
+  if (!isContinuousMotionCommand(parseRobotCommand(command))) return;
+  lastContinuousCommandMs = millis();
+  communicationTimedOut = false;
+}
+
+void clearContinuousCommandDeadline() {
+  lastContinuousCommandMs = 0;
+  communicationTimedOut = false;
+}
+
+bool hasCommunicationTimedOut() {
+  if (!isContinuousMotionCommand(parseRobotCommand(currentCommand))) return false;
+  if (lastContinuousCommandMs == 0) return false;
+  if (millis() - lastContinuousCommandMs <= COMMUNICATION_TIMEOUT_MS) return false;
+
+  currentCommand = "";
+  lastContinuousCommandMs = 0;
+  communicationTimedOut = true;
+  return true;
+}
+
+bool shouldAbortMotion() { return isEmergencyStopActive() || hasCommunicationTimedOut(); }
+
+String jsonEscape(const String& value) {
+  String escaped = "";
+  for (size_t i = 0; i < value.length(); i++) {
+    char c = value.charAt(i);
+    if (c == '"' || c == '\\') {
+      escaped += '\\';
+      escaped += c;
+    } else if (c == '\n') {
+      escaped += "\\n";
+    } else if (c == '\r') {
+      escaped += "\\r";
+    } else if (c == '\t') {
+      escaped += "\\t";
+    } else {
+      escaped += c;
+    }
+  }
+  return escaped;
+}
+
+void sendApiError(int statusCode, const char* error, const char* message) {
+  String json = "{";
+  json += "\"status\":\"error\",";
+  json += "\"error\":\"";
+  json += error;
+  json += "\",";
+  json += "\"message\":\"";
+  json += message;
+  json += "\"";
+  json += "}";
+  server.send(statusCode, "application/json", json);
+}
+
+const char* getMotionState() {
+  if (isEmergencyStopActive()) return "emergency_stop";
+  if (communicationTimedOut) return "communication_timeout";
+  if (motionInProgress || currentCommand.length() > 0) return "moving";
+  return "idle";
+}
+
 void handleCommandWeb() {
   // We send 200 OK immediately so the web browser doesn't hang waiting for animation to finish
   if (server.hasArg("pose")) {
-    currentCommand = server.arg("pose");
-    recordInput();
-    exitIdle();
-    server.send(200, "text/plain", "OK"); 
-  } 
-  else if (server.hasArg("go")) {
-    currentCommand = server.arg("go");
+    queueRobotCommand(server.arg("pose"));
     recordInput();
     exitIdle();
     server.send(200, "text/plain", "OK");
-  } 
+  }
+  else if (server.hasArg("go")) {
+    String command = server.arg("go");
+    queueRobotCommand(command);
+    refreshContinuousCommandDeadline(command);
+    recordInput();
+    exitIdle();
+    server.send(200, "text/plain", "OK");
+  }
   else if (server.hasArg("stop")) {
-    currentCommand = "";
+    queueRobotCommand("stop");
+    recordInput();
+    server.send(200, "text/plain", "OK");
+  }
+  else if (server.hasArg("heartbeat")) {
+    refreshContinuousCommandDeadline(currentCommand);
     recordInput();
     server.send(200, "text/plain", "OK");
   }
@@ -261,9 +645,22 @@ void handleSetSettings() {
 
 // API endpoint for network clients to get robot status
 void handleGetStatus() {
+  unsigned long now = millis();
   String json = "{";
-  json += "\"currentCommand\":\"" + currentCommand + "\",";
-  json += "\"currentFace\":\"" + currentFaceName + "\",";
+  json += "\"firmwareVersion\":\"" FIRMWARE_VERSION "\",";
+  json += "\"uptimeMs\":" + String(now) + ",";
+  json += "\"currentCommand\":\"" + jsonEscape(currentCommand) + "\",";
+  json += "\"currentFace\":\"" + jsonEscape(currentFaceName) + "\",";
+  json += "\"motionState\":\"" + String(getMotionState()) + "\",";
+  json += "\"motionInProgress\":" + String(motionInProgress ? "true" : "false") + ",";
+  json += "\"emergencyStopActive\":" + String(isEmergencyStopActive() ? "true" : "false") + ",";
+  json += "\"pendingEmergencyReset\":" + String(pendingEmergencyReset ? "true" : "false") + ",";
+  json += "\"communicationTimedOut\":" + String(communicationTimedOut ? "true" : "false") + ",";
+  json += "\"commandTimeoutMs\":" + String(COMMUNICATION_TIMEOUT_MS) + ",";
+  json += "\"lastCommandMs\":" + String(lastInputTime) + ",";
+  json += "\"lastCommandAgeMs\":" + String(lastInputTime > 0 ? now - lastInputTime : 0) + ",";
+  json += "\"availableCommands\":[\"stand\",\"rest\",\"forward\",\"backward\",\"left\",\"right\",\"stop\",\"wave\",\"dance\",\"swim\",\"point\",\"pushup\",\"bow\",\"cute\",\"freaky\",\"worm\",\"shake\",\"shrug\",\"dead\",\"crab\",\"emergency_stop\",\"reset_emergency_stop\",\"heartbeat\"],";
+  json += "\"capabilities\":[\"legacy_web\",\"json_api\",\"face_control\",\"latched_emergency_stop\",\"communication_timeout_soft_stop\"],";
   json += "\"networkConnected\":" + String(networkConnected ? "true" : "false") + ",";
   json += "\"apIP\":\"" + WiFi.softAPIP().toString() + "\"";
   if (networkConnected) {
@@ -276,87 +673,269 @@ void handleGetStatus() {
 // API endpoint for network clients to send commands (JSON-based)
 void handleApiCommand() {
   if (server.method() != HTTP_POST) {
-    server.send(405, "application/json", "{\"error\":\"Method not allowed\"}");
+    sendApiError(405, "method_not_allowed", "Method not allowed");
     return;
   }
-  
+
   String body = server.arg("plain");
-  
-  Serial.println("API Command received:");
-  Serial.println(body);
-  
-  // Check for face-only command (no movement)
-  int faceOnlyStart = body.indexOf("\"face\":\"");
-  if (faceOnlyStart == -1) {
-    faceOnlyStart = body.indexOf("\"face\": \"");
+  Serial.print("API command body bytes: ");
+  Serial.println(body.length());
+
+  if (body.length() == 0) {
+    Serial.println("Error: empty API body");
+    sendApiError(400, "invalid_json", "Invalid JSON body");
+    return;
   }
-  
-  // If we have a face but no command field, it's face-only
-  bool faceOnly = (faceOnlyStart > 0 && body.indexOf("\"command\":") == -1 && body.indexOf("\"command\": ") == -1);
-  
+
+  if (body.length() > MAX_API_BODY_BYTES) {
+    Serial.println("Error: API body too large");
+    sendApiError(413, "payload_too_large", "Request body is too large");
+    return;
+  }
+
+  StaticJsonDocument<MAX_API_BODY_BYTES> doc;
+  DeserializationError jsonError = deserializeJson(doc, body);
+  if (jsonError) {
+    Serial.println("Error: invalid JSON body");
+    sendApiError(400, "invalid_json", "Invalid JSON body");
+    return;
+  }
+
+  if (!doc.is<JsonObject>()) {
+    Serial.println("Error: API body must be object");
+    sendApiError(400, "invalid_payload", "Request body must be a JSON object");
+    return;
+  }
+
+  JsonObject payload = doc.as<JsonObject>();
+  bool hasCommand = payload.containsKey("command");
+  bool hasFace = payload.containsKey("face");
+
+  if (!hasCommand && !hasFace) {
+    Serial.println("Error: command or face field not found");
+    sendApiError(400, "missing_command", "Missing command or face field");
+    return;
+  }
+
   String command = "";
   String face = "";
-  
-  // Parse face
-  if (faceOnlyStart > 0) {
-    faceOnlyStart = body.indexOf("\"", faceOnlyStart + 6) + 1;
-    int faceEnd = body.indexOf("\"", faceOnlyStart);
-    if (faceEnd > faceOnlyStart) {
-      face = body.substring(faceOnlyStart, faceEnd);
-      Serial.print("Parsed face: ");
-      Serial.println(face);
-    }
-  }
-  
-  // Parse command (if not face-only)
-  if (!faceOnly) {
-    int cmdStart = body.indexOf("\"command\":\"");
-    if (cmdStart == -1) {
-      cmdStart = body.indexOf("\"command\": \"");
-    }
-    
-    if (cmdStart == -1) {
-      Serial.println("Error: command field not found");
-      server.send(400, "application/json", "{\"error\":\"Missing command field\"}");
+
+  if (hasCommand) {
+    if (!payload["command"].is<const char*>()) {
+      Serial.println("Error: invalid command type");
+      sendApiError(400, "invalid_command_type", "Command must be a string");
       return;
     }
-    
-    cmdStart = body.indexOf("\"", cmdStart + 10) + 1;
-    int cmdEnd = body.indexOf("\"", cmdStart);
-    
-    if (cmdEnd <= cmdStart) {
-      Serial.println("Error: invalid command format");
-      server.send(400, "application/json", "{\"error\":\"Invalid command format\"}");
+
+    command = String(payload["command"].as<const char*>());
+    command.trim();
+    command.toLowerCase();
+    if (command.length() == 0) {
+      Serial.println("Error: empty command");
+      sendApiError(400, "empty_command", "Command must not be empty");
       return;
     }
-    
-    command = body.substring(cmdStart, cmdEnd);
+
     Serial.print("Parsed command: ");
     Serial.println(command);
   }
-  
-  // Set face if provided
-  if (face.length() > 0) {
+
+  if (hasFace) {
+    if (!payload["face"].is<const char*>()) {
+      Serial.println("Error: invalid face type");
+      sendApiError(400, "invalid_face_type", "Face must be a string");
+      return;
+    }
+
+    face = String(payload["face"].as<const char*>());
+    face.trim();
+    face.toLowerCase();
+    if (face.length() == 0) {
+      Serial.println("Error: empty face");
+      sendApiError(400, "empty_face", "Face must not be empty");
+      return;
+    }
+    if (!isSupportedFaceName(face)) {
+      Serial.println("Error: unknown face");
+      sendApiError(400, "unknown_face", "Unsupported face");
+      return;
+    }
     setFace(face);
   }
-  
-  // If face-only, just acknowledge
-  if (faceOnly) {
+
+  if (!hasCommand) {
     recordInput();
-    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Face updated\"}");
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Face updated\",\"face\":\"" + jsonEscape(face) + "\"}");
     return;
   }
-  
-  // Execute command
-  if (command == "stop") {
-    currentCommand = "";
+
+  RobotCommand robotCommand = parseRobotCommand(command);
+
+  if (robotCommand == RobotCommand::None) {
+    Serial.println("Error: empty command");
+    sendApiError(400, "empty_command", "Command must not be empty");
+    return;
+  }
+
+  if (robotCommand == RobotCommand::Unknown) {
+    Serial.println("Error: unknown command");
+    sendApiError(400, "unknown_command", "Unsupported robot command");
+    return;
+  }
+
+  if (isEmergencyStopActive() &&
+      robotCommand != RobotCommand::EmergencyStop &&
+      robotCommand != RobotCommand::ResetEmergencyStop &&
+      robotCommand != RobotCommand::Stop &&
+      robotCommand != RobotCommand::Heartbeat) {
+    Serial.println("Error: emergency stop blocks command");
+    sendApiError(409, "emergency_stop_active", "Emergency stop is active");
+    return;
+  }
+
+  if (robotCommand == RobotCommand::Heartbeat) {
+    refreshContinuousCommandDeadline(currentCommand);
     recordInput();
-    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command stopped\"}");
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Heartbeat accepted\",\"command\":\"heartbeat\"}");
+    return;
+  }
+
+  // Execute command
+  if (robotCommand == RobotCommand::Stop) {
+    setCurrentCommandFromRobotCommand(robotCommand, command);
+    recordInput();
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command stopped\",\"command\":\"stop\"}");
+  } else if (robotCommand == RobotCommand::EmergencyStop) {
+    setCurrentCommandFromRobotCommand(robotCommand, command);
+    recordInput();
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Emergency stop activated\",\"command\":\"emergency_stop\"}");
+  } else if (robotCommand == RobotCommand::ResetEmergencyStop) {
+    setCurrentCommandFromRobotCommand(robotCommand, command);
+    recordInput();
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Emergency stop reset\",\"command\":\"reset_emergency_stop\"}");
   } else {
-    currentCommand = command;
+    setCurrentCommandFromRobotCommand(robotCommand, command);
+    refreshContinuousCommandDeadline(command);
     recordInput();
     exitIdle();
-    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command executed\"}");
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command accepted\",\"command\":\"" + jsonEscape(command) + "\"}");
+  }
+}
+
+void executeSerialCommand(const char* command, bool allowLongActions) {
+  int motorNum, angle;
+
+  if(strcmp(command, "emergency_stop") == 0 || strcmp(command, "estop") == 0 || strcmp(command, "rn es") == 0) {
+    activateEmergencyStop();
+  }
+  else if(strcmp(command, "reset_emergency_stop") == 0 || strcmp(command, "rn er") == 0) {
+    requestEmergencyStopReset();
+  }
+  else if (!allowLongActions) {
+    if (!isEmergencyStopActive() && !pendingSerialCommandAvailable) {
+      pendingSerialCommand = command;
+      pendingSerialCommandAvailable = true;
+    }
+  }
+  else if(strcmp(command, "run walk") == 0 || strcmp(command, "rn wf") == 0) runSerialRobotCommand("forward", true);
+  else if(strcmp(command, "rn wb") == 0) runSerialRobotCommand("backward", true);
+  else if(strcmp(command, "rn tl") == 0) runSerialRobotCommand("left", true);
+  else if(strcmp(command, "rn tr") == 0) runSerialRobotCommand("right", true);
+  else if(strcmp(command, "run rest") == 0 || strcmp(command, "rn rs") == 0) runSerialRobotCommand("rest", false);
+  else if(strcmp(command, "run stand") == 0 || strcmp(command, "rn st") == 0) runSerialRobotCommand("stand", false);
+  else if(strcmp(command, "rn wv") == 0) runSerialRobotCommand("wave", false);
+  else if(strcmp(command, "rn dn") == 0) runSerialRobotCommand("dance", false);
+  else if(strcmp(command, "rn sw") == 0) runSerialRobotCommand("swim", false);
+  else if(strcmp(command, "rn pt") == 0) runSerialRobotCommand("point", false);
+  else if(strcmp(command, "rn pu") == 0) runSerialRobotCommand("pushup", false);
+  else if(strcmp(command, "rn bw") == 0) runSerialRobotCommand("bow", false);
+  else if(strcmp(command, "rn ct") == 0) runSerialRobotCommand("cute", false);
+  else if(strcmp(command, "rn fk") == 0) runSerialRobotCommand("freaky", false);
+  else if(strcmp(command, "rn wm") == 0) runSerialRobotCommand("worm", false);
+  else if(strcmp(command, "rn sk") == 0) runSerialRobotCommand("shake", false);
+  else if(strcmp(command, "rn sg") == 0) runSerialRobotCommand("shrug", false);
+  else if(strcmp(command, "rn dd") == 0) runSerialRobotCommand("dead", false);
+  else if(strcmp(command, "rn cb") == 0) runSerialRobotCommand("crab", false);
+  else if (strcmp(command, "subtrim") == 0 || strcmp(command, "st") == 0) {
+    Serial.println("Subtrim values:");
+    for (int i = 0; i < 8; i++) {
+      Serial.print("Motor "); Serial.print(i); Serial.print(": ");
+      if (servoSubtrim[i] >= 0) Serial.print("+");
+      Serial.println(servoSubtrim[i]);
+    }
+  }
+  else if (strcmp(command, "subtrim save") == 0 || strcmp(command, "st save") == 0) {
+    Serial.println("Copy and paste this into your code:");
+    Serial.print("int8_t servoSubtrim[8] = {");
+    for (int i = 0; i < 8; i++) {
+      Serial.print(servoSubtrim[i]);
+      if (i < 7) Serial.print(", ");
+    }
+    Serial.println("};");
+  }
+  else if (strncmp(command, "subtrim reset", 13) == 0 || strncmp(command, "st reset", 8) == 0) {
+    for (int i = 0; i < 8; i++) servoSubtrim[i] = 0;
+    Serial.println("All subtrim values reset to 0");
+  }
+  else if (strncmp(command, "subtrim ", 8) == 0 || strncmp(command, "st ", 3) == 0) {
+    const char* params = (command[1] == 't') ? command + 3 : command + 8;
+    int trimMotor, trimValue;
+    if (sscanf(params, "%d %d", &trimMotor, &trimValue) == 2) {
+      if (trimMotor >= 0 && trimMotor < 8) {
+        if (trimValue >= -90 && trimValue <= 90) {
+          servoSubtrim[trimMotor] = trimValue;
+          Serial.print("Motor "); Serial.print(trimMotor); Serial.print(" subtrim set to ");
+          if (trimValue >= 0) Serial.print("+");
+          Serial.println(trimValue);
+        } else {
+          Serial.println("Subtrim value must be between -90 and +90");
+        }
+      } else {
+        Serial.println("Invalid motor number (0-7)");
+      }
+    }
+  }
+  else if (strncmp(command, "all ", 4) == 0) {
+    if (sscanf(command + 4, "%d", &angle) == 1) {
+      for (int i = 0; i < 8; i++) setServoAngle(i, angle);
+      Serial.print("All servos set to "); Serial.println(angle);
+    }
+  }
+  else if (sscanf(command, "%d %d", &motorNum, &angle) == 2) {
+    if (motorNum >= 0 && motorNum < 8) {
+      setServoAngle(motorNum, angle);
+      Serial.print("Servo "); Serial.print(motorNum); Serial.print(" set to "); Serial.println(angle);
+    } else {
+      Serial.println("Invalid motor number (0-7)");
+    }
+  }
+}
+
+void processSerialInput(bool emergencyOnly) {
+  if (!emergencyOnly && pendingSerialCommandAvailable) {
+    String command = pendingSerialCommand;
+    pendingSerialCommand = "";
+    pendingSerialCommandAvailable = false;
+    if (!isEmergencyStopActive()) {
+      recordInput();
+      executeSerialCommand(command.c_str(), true);
+    }
+  }
+
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (serialBufferPos > 0) {
+        serialCommandBuffer[serialBufferPos] = '\0';
+        recordInput();
+        executeSerialCommand(serialCommandBuffer, !emergencyOnly);
+        serialBufferPos = 0;
+        if (emergencyOnly && shouldAbortMotion()) return;
+      }
+    } else if (serialBufferPos < sizeof(serialCommandBuffer) - 1) {
+      serialBufferPos++;
+      serialCommandBuffer[serialBufferPos - 1] = c;
+    }
   }
 }
 
@@ -490,117 +1069,14 @@ void loop() {
   updateIdleBlink();
   updateWifiInfoScroll();
 
+  hasCommunicationTimedOut();
+
   if (currentCommand != "") {
-    String cmd = currentCommand;
-    if (cmd == "forward") runWalkPose();
-    else if (cmd == "backward") runWalkBackward();
-    else if (cmd == "left") runTurnLeft();
-    else if (cmd == "right") runTurnRight();
-    else if (cmd == "rest") { runRestPose(); if (currentCommand == "rest") currentCommand = ""; }
-    else if (cmd == "stand") { runStandPose(1); if (currentCommand == "stand") currentCommand = ""; }
-    else if (cmd == "wave") runWavePose();
-    else if (cmd == "dance") runDancePose();
-    else if (cmd == "swim") runSwimPose();
-    else if (cmd == "point") runPointPose();
-    else if (cmd == "pushup") runPushupPose();
-    else if (cmd == "bow") runBowPose();
-    else if (cmd == "cute") runCutePose();
-    else if (cmd == "freaky") runFreakyPose();
-    else if (cmd == "worm") runWormPose();
-    else if (cmd == "shake") runShakePose();
-    else if (cmd == "shrug") runShrugPose();
-    else if (cmd == "dead") runDeadPose();
-    else if (cmd == "crab") runCrabPose();
+    dispatchRobotCommand(parseRobotCommand(currentCommand));
   }
-  
+
   // Serial CLI for debugging (can be used to diagnose servo position issues and wiring)
-  if (Serial.available()) {
-    static char command_buffer[32];
-    static byte buffer_pos = 0;
-    char c = Serial.read();
-    if (c == '\n' || c == '\r') {
-      if (buffer_pos > 0) {
-        command_buffer[buffer_pos] = '\0';
-        int motorNum, angle;
-        recordInput();
-        if(strcmp(command_buffer, "run walk") == 0 || strcmp(command_buffer, "rn wf") == 0) { currentCommand = "forward"; runWalkPose(); currentCommand = ""; }
-        else if(strcmp(command_buffer, "rn wb") == 0) { currentCommand = "backward"; runWalkBackward(); currentCommand = ""; }
-        else if(strcmp(command_buffer, "rn tl") == 0) { currentCommand = "left"; runTurnLeft(); currentCommand = ""; }
-        else if(strcmp(command_buffer, "rn tr") == 0) { currentCommand = "right"; runTurnRight(); currentCommand = ""; }
-        else if(strcmp(command_buffer, "run rest") == 0 || strcmp(command_buffer, "rn rs") == 0) runRestPose();
-        else if(strcmp(command_buffer, "run stand") == 0 || strcmp(command_buffer, "rn st") == 0) runStandPose(1);
-        else if(strcmp(command_buffer, "rn wv") == 0) { currentCommand = "wave"; runWavePose(); }
-        else if(strcmp(command_buffer, "rn dn") == 0) { currentCommand = "dance"; runDancePose(); }
-        else if(strcmp(command_buffer, "rn sw") == 0) { currentCommand = "swim"; runSwimPose(); }
-        else if(strcmp(command_buffer, "rn pt") == 0) { currentCommand = "point"; runPointPose(); }
-        else if(strcmp(command_buffer, "rn pu") == 0) { currentCommand = "pushup"; runPushupPose(); }
-        else if(strcmp(command_buffer, "rn bw") == 0) { currentCommand = "bow"; runBowPose(); }
-        else if(strcmp(command_buffer, "rn ct") == 0) { currentCommand = "cute"; runCutePose(); }
-        else if(strcmp(command_buffer, "rn fk") == 0) { currentCommand = "freaky"; runFreakyPose(); }
-        else if(strcmp(command_buffer, "rn wm") == 0) { currentCommand = "worm"; runWormPose(); }
-        else if(strcmp(command_buffer, "rn sk") == 0) { currentCommand = "shake"; runShakePose(); }
-        else if(strcmp(command_buffer, "rn sg") == 0) { currentCommand = "shrug"; runShrugPose(); }
-        else if(strcmp(command_buffer, "rn dd") == 0) { currentCommand = "dead"; runDeadPose(); }
-        else if(strcmp(command_buffer, "rn cb") == 0) { currentCommand = "crab"; runCrabPose(); }
-        else if (strcmp(command_buffer, "subtrim") == 0 || strcmp(command_buffer, "st") == 0) {
-          Serial.println("Subtrim values:");
-          for (int i = 0; i < 8; i++) {
-            Serial.print("Motor "); Serial.print(i); Serial.print(": ");
-            if (servoSubtrim[i] >= 0) Serial.print("+");
-            Serial.println(servoSubtrim[i]);
-          }
-        }
-        else if (strcmp(command_buffer, "subtrim save") == 0 || strcmp(command_buffer, "st save") == 0) {
-          Serial.println("Copy and paste this into your code:");
-          Serial.print("int8_t servoSubtrim[8] = {");
-          for (int i = 0; i < 8; i++) {
-            Serial.print(servoSubtrim[i]);
-            if (i < 7) Serial.print(", ");
-          }
-          Serial.println("};");
-        }
-        else if (strncmp(command_buffer, "subtrim reset", 13) == 0 || strncmp(command_buffer, "st reset", 8) == 0) {
-          for (int i = 0; i < 8; i++) servoSubtrim[i] = 0;
-          Serial.println("All subtrim values reset to 0");
-        }
-        else if (strncmp(command_buffer, "subtrim ", 8) == 0 || strncmp(command_buffer, "st ", 3) == 0) {
-          const char* params = (command_buffer[1] == 't') ? command_buffer + 3 : command_buffer + 8;
-          int trimMotor, trimValue;
-          if (sscanf(params, "%d %d", &trimMotor, &trimValue) == 2) {
-            if (trimMotor >= 0 && trimMotor < 8) {
-              if (trimValue >= -90 && trimValue <= 90) {
-                servoSubtrim[trimMotor] = trimValue;
-                Serial.print("Motor "); Serial.print(trimMotor); Serial.print(" subtrim set to ");
-                if (trimValue >= 0) Serial.print("+");
-                Serial.println(trimValue);
-              } else {
-                Serial.println("Subtrim value must be between -90 and +90");
-              }
-            } else {
-              Serial.println("Invalid motor number (0-7)");
-            }
-          }
-        }
-        else if (strncmp(command_buffer, "all ", 4) == 0) {
-             if (sscanf(command_buffer + 4, "%d", &angle) == 1) {
-                 for (int i = 0; i < 8; i++) setServoAngle(i, angle);
-                 Serial.print("All servos set to "); Serial.println(angle);
-             }
-        }
-        else if (sscanf(command_buffer, "%d %d", &motorNum, &angle) == 2) {
-             if (motorNum >= 0 && motorNum < 8) {
-                 setServoAngle(motorNum, angle);
-                 Serial.print("Servo "); Serial.print(motorNum); Serial.print(" set to "); Serial.println(angle);
-             } else {
-                 Serial.println("Invalid motor number (0-7)");
-             }
-        }
-        buffer_pos = 0;
-      }
-    } else if (buffer_pos < sizeof(command_buffer) - 1) {
-      command_buffer[buffer_pos++] = c;
-    }
-  }
+  processSerialInput(false);
 }
 
 // Function to update the robot's face
@@ -673,6 +1149,15 @@ int getFaceFpsForName(const String& faceName) {
   return faceFps;
 }
 
+bool isSupportedFaceName(const String& faceName) {
+  for (size_t i = 0; i < (sizeof(faceEntries) / sizeof(faceEntries[0])); i++) {
+    if (faceName.equalsIgnoreCase(faceEntries[i].name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void updateAnimatedFace() {
   if (currentFaceFrames == nullptr || currentFaceFrameCount <= 1) return;
   if (currentFaceMode == FACE_ANIM_ONCE && faceAnimFinished) return;
@@ -718,6 +1203,8 @@ void delayWithFace(unsigned long ms) {
     updateAnimatedFace();
     server.handleClient();
     dnsServer.processNextRequest();
+    processSerialInput(true);
+    if (shouldAbortMotion()) return;
     delay(5);
   }
 }
@@ -768,12 +1255,13 @@ void updateIdleBlink() {
 }
 
 // ====== HELPERS ======
-void setServoAngle(uint8_t channel, int angle) { 
-  if (channel < 8) {
-    int adjustedAngle = constrain(angle + servoSubtrim[channel], 0, 180);
-    servos[channel].write(adjustedAngle);
-    delayWithFace(motorCurrentDelay);
-  }
+void setServoAngle(uint8_t channel, int angle) {
+  if (channel >= 8) return;
+  if (isEmergencyStopActive()) return;
+
+  int adjustedAngle = constrain(angle + servoSubtrim[channel], 0, 180);
+  servos[channel].write(adjustedAngle);
+  delayWithFace(motorCurrentDelay);
 }
 
 bool pressingCheck(String cmd, int ms) {
@@ -781,7 +1269,9 @@ bool pressingCheck(String cmd, int ms) {
   while (millis() - start < ms) {
     server.handleClient();
     dnsServer.processNextRequest();
+    processSerialInput(true);
     updateAnimatedFace();
+    if (shouldAbortMotion()) return false;
     if (currentCommand != cmd) {
       runStandPose(1);
       return false;

@@ -1,1 +1,12 @@
 .vscode/launch.json
+
+# Arduino CLI build output
+.build/
+
+# Python local outputs
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local private AI controller data
+ai-controller/data/

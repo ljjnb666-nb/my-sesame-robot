@@ -1,0 +1,20 @@
+{
+  "name": "advanced_real_self_righting_gate",
+  "config": {
+    "runtimeMode": "real_robot",
+    "allowSelfRighting": true
+  },
+  "steps": [
+    {
+      "name": "real robot self-righting waits for user",
+      "action": "plan_self_righting",
+      "posture": "fallen",
+      "expect": {
+        "feature": "self_righting",
+        "state": "fallen",
+        "command": null,
+        "requiresUserConfirmation": true
+      }
+    }
+  ]
+}

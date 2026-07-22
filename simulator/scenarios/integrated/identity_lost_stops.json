@@ -1,0 +1,32 @@
+{
+  "name": "identity_lost_stops",
+  "config": {
+    "allowFollowing": true
+  },
+  "steps": [
+    {
+      "name": "first frame follows owner",
+      "identityConfirmed": true,
+      "target": {
+        "visible": true,
+        "centerX": 0.5,
+        "distanceM": 1.6
+      },
+      "expect": {
+        "command": "walk_forward",
+        "trackingState": "following"
+      }
+    },
+    {
+      "name": "identity lost stops old motion",
+      "identityConfirmed": false,
+      "target": {
+        "visible": false
+      },
+      "expect": {
+        "command": "stop",
+        "trackingState": "target_lost"
+      }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "emergency_reset_expired_confirmation",
+  "runtimeFlow": true,
+  "config": {
+    "confirmationTtlSeconds": 1,
+    "confirmationClockStart": 100,
+    "initialRobotStatus": {
+      "emergencyStopActive": true
+    }
+  },
+  "steps": [
+    {
+      "name": "request reset confirmation",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "expect": {
+        "confirmationState": "requested"
+      }
+    },
+    {
+      "name": "submit expired id",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "advanceConfirmationClockSeconds": 1,
+      "submitConfirmation": "last",
+      "expect": {
+        "command": null,
+        "confirmationState": "expired",
+        "sentCommand": false
+      }
+    }
+  ]
+}

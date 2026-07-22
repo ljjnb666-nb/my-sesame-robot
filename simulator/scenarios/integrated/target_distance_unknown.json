@@ -1,0 +1,20 @@
+{
+  "name": "target_distance_unknown",
+  "config": {
+    "allowFollowing": true
+  },
+  "steps": [
+    {
+      "name": "centered target with unknown distance does not move forward",
+      "identityConfirmed": true,
+      "target": {
+        "visible": true,
+        "centerX": 0.5
+      },
+      "expect": {
+        "command": null,
+        "trackingState": "tracking"
+      }
+    }
+  ]
+}

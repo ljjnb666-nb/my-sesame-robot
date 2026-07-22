@@ -157,6 +157,7 @@ The firmware is built on the Arduino-ESP32 framework. Currently the firmware is 
   - `/api/command`: JSON command endpoint (POST) - supports face-only updates and combined face+movement commands
   - `/getSettings` / `/setSettings`: Parameter configuration
 - **Face-Only Command Support**: The `/api/command` endpoint intelligently detects face-only requests (no `command` field) and updates the display without triggering movement animations.
+- **Communication Timeout Soft Stop**: Continuous movement commands must be refreshed by repeated commands or a heartbeat. If communication is lost, the firmware clears the active continuous movement without latching emergency stop.
 - **Non-Blocking Control Flow**: Instead of `delay()`, the firmware uses a custom `pressingCheck(String cmd, int ms)` function. This function polls `server.handleClient()` and `dnsServer.processNextRequest()` during animation frames, allowing for real-time interruptibility (e.g., immediate stop on button release). This pressingCheck protocol can be used for motion commands like walking to play each motion only when the button is held.
 
 ### Display & Graphics Subsystem
@@ -319,13 +320,27 @@ GET /api/status
 
 ```json
 {
+  "firmwareVersion": "ai-robot-v0.2",
+  "uptimeMs": 123456,
   "currentCommand": "forward",
   "currentFace": "walk",
+  "motionState": "moving",
+  "motionInProgress": true,
+  "emergencyStopActive": false,
+  "pendingEmergencyReset": false,
+  "communicationTimedOut": false,
+  "commandTimeoutMs": 1200,
+  "lastCommandMs": 123000,
+  "lastCommandAgeMs": 456,
+  "availableCommands": ["stand", "rest", "forward", "backward", "left", "right", "stop", "wave", "dance", "swim", "point", "pushup", "bow", "cute", "freaky", "worm", "shake", "shrug", "dead", "crab", "emergency_stop", "reset_emergency_stop", "heartbeat"],
+  "capabilities": ["legacy_web", "json_api", "face_control", "latched_emergency_stop", "communication_timeout_soft_stop"],
   "networkConnected": true,
   "apIP": "192.168.4.1",
   "networkIP": "192.168.1.100"
 }
 ```
+
+The status response keeps the original `currentCommand`, `currentFace`, `networkConnected`, `apIP`, and `networkIP` fields for compatibility. New clients should prefer `motionState`, `emergencyStopActive`, `pendingEmergencyReset`, `communicationTimedOut`, `lastCommandAgeMs`, `availableCommands`, and `capabilities` for machine-readable behavior checks.
 
 #### Send Commands
 
@@ -381,12 +396,28 @@ Content-Type: application/json
 }
 ```
 
+#### Heartbeat for Continuous Movement
+
+Continuous movement commands (`forward`, `backward`, `left`, `right`) are automatically soft-stopped if the firmware does not receive a refresh within `commandTimeoutMs`. Network clients can refresh the currently active movement by repeating the same movement command or by sending:
+
+```http
+POST /api/command
+Content-Type: application/json
+
+{
+  "command": "heartbeat"
+}
+```
+
+If the timeout expires, `/api/status` reports `"communicationTimedOut": true`. This is not a latched emergency stop; the next explicit movement command starts a new movement window.
+
 ### Available Commands
 
 **Movement Commands:**
 
 - `forward`, `backward`, `left`, `right` - Continuous movement (loops until stopped)
 - `stop` - Immediately stop current movement
+- `heartbeat` - Refresh the active continuous movement timeout without changing command
 
 **Pose Commands (one-shot animations):**
 
@@ -845,3 +876,16 @@ This eliminates the need to manually update multiple switch statements or arrays
 1. **Toolchain**: Configure your IDE for `ESP32 Dev Module` or `Lolin S2 Mini`.
 2. **Calibration**: Use the Serial Monitor (115200) to send manual step commands (e.g., `rn wf`).
 3. **Power Management**: If the robot brownouts during movement, increase `motorCurrentDelay` in the web settings to further stagger servo bursts.
+
+## 2026-07-22 JSON API Safety Update
+
+- `/api/command` now uses ArduinoJson instead of string search parsing.
+- Firmware dependency: `ArduinoJson` `6.21.5`.
+- Maximum request body size: `512` bytes. Larger bodies return HTTP `413` with `payload_too_large`.
+- The firmware rejects non-object JSON, missing `command`/`face`, non-string `command`, non-string `face`, empty strings, unknown commands, and unknown faces.
+- Error responses use the shared shape `{"status":"error","error":"code","message":"..."}`.
+- Success responses include the accepted `command` or updated `face`.
+- The firmware logs body size and parsed field names, but not the complete request body.
+- Software emergency stop is a software latch and is not a physical power-disconnect emergency stop.
+- `stand` remains a standing pose and has not been validated as real self-righting.
+- No real charging dock hardware or docking firmware command exists yet.

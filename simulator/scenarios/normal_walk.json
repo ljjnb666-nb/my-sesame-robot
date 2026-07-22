@@ -1,0 +1,22 @@
+{
+  "name": "normal_walk",
+  "steps": [
+    {
+      "name": "start walking",
+      "command": "walk_forward",
+      "expect": {
+        "currentCommand": "forward",
+        "motionState": "moving",
+        "emergencyStopActive": false
+      }
+    },
+    {
+      "name": "stop walking",
+      "command": "stop",
+      "expect": {
+        "currentCommand": "",
+        "motionState": "idle"
+      }
+    }
+  ]
+}

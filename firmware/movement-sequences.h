@@ -45,6 +45,7 @@ extern void setFaceWithMode(const String& faceName, FaceAnimMode mode);
 extern void delayWithFace(unsigned long ms);
 extern void enterIdle();
 extern bool pressingCheck(String cmd, int ms);
+extern bool shouldAbortMotion();
 
 // Pose/animation prototypes
 void runRestPose();
@@ -93,15 +94,21 @@ inline void runWavePose() {
   setFaceWithMode("wave", FACE_ANIM_ONCE); 
   runStandPose(0); 
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   setServoAngle(R4, 80); setServoAngle(L3, 180); 
   setServoAngle(L2, 90); setServoAngle(R1, 100); 
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   setServoAngle(L3, 180); 
   delayWithFace(300); 
+  if (shouldAbortMotion()) return;
   for (int i = 0; i < 4; i++) { 
     setServoAngle(L3, 180); delayWithFace(300); 
+    if (shouldAbortMotion()) return;
     setServoAngle(L3, 100); delayWithFace(300); 
+    if (shouldAbortMotion()) return;
   } 
+  if (shouldAbortMotion()) return;
   runStandPose(1); 
   if (currentCommand == "wave") currentCommand = "";
 }
@@ -114,14 +121,18 @@ inline void runDancePose() {
   setServoAngle(R4, 160); setServoAngle(R3, 160); 
   setServoAngle(L3, 10); setServoAngle(L4, 10); 
   delayWithFace(300); 
+  if (shouldAbortMotion()) return;
   for (int i = 0; i < 5; i++) { 
     setServoAngle(R4, 115); setServoAngle(R3, 115); 
     setServoAngle(L3, 10); setServoAngle(L4, 10); 
     delayWithFace(300); 
+    if (shouldAbortMotion()) return;
     setServoAngle(R4, 160); setServoAngle(R3, 160); 
     setServoAngle(L3, 65); setServoAngle(L4, 65); 
     delayWithFace(300); 
+    if (shouldAbortMotion()) return;
   } 
+  if (shouldAbortMotion()) return;
   runStandPose(1); 
   if (currentCommand == "dance") currentCommand = "";
 }
@@ -134,10 +145,13 @@ inline void runSwimPose() {
     setServoAngle(R1, 135); setServoAngle(R2, 45); 
     setServoAngle(L1, 45); setServoAngle(L2, 135); 
     delayWithFace(400); 
+    if (shouldAbortMotion()) return;
     setServoAngle(R1, 90); setServoAngle(R2, 90); 
     setServoAngle(L1, 90); setServoAngle(L2, 90); 
     delayWithFace(400); 
+    if (shouldAbortMotion()) return;
   } 
+  if (shouldAbortMotion()) return;
   runStandPose(1); 
   if (currentCommand == "swim") currentCommand = "";
 }
@@ -150,6 +164,7 @@ inline void runPointPose() {
   setServoAngle(L1, 25); setServoAngle(L3, 145);
   setServoAngle(R4, 80); setServoAngle(R3, 170); 
   delayWithFace(2000); 
+  if (shouldAbortMotion()) return;
   runStandPose(1); 
   if (currentCommand == "point") currentCommand = "";
 }
@@ -164,14 +179,18 @@ inline void runPushupPose() {
   setServoAngle(L3, 90);
   setServoAngle(R3, 90);
   delayWithFace(500);
+  if (shouldAbortMotion()) return;
   for (int i = 0; i < 4; i++) {
     setServoAngle(L3, 0);
     setServoAngle(R3, 180);
     delayWithFace(600);
+    if (shouldAbortMotion()) return;
     setServoAngle(L3, 90);
     setServoAngle(R3, 90);
     delayWithFace(500);
+    if (shouldAbortMotion()) return;
   }
+  if (shouldAbortMotion()) return;
   runStandPose(1);
   if (currentCommand == "pushup") currentCommand = "";
 }
@@ -181,6 +200,7 @@ inline void runBowPose() {
   setFaceWithMode("bow", FACE_ANIM_ONCE);
   runStandPose(0); 
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   setServoAngle(L1, 0);
   setServoAngle(R1, 180);
   setServoAngle(L3, 0);
@@ -190,9 +210,11 @@ inline void runBowPose() {
   setServoAngle(R4, 0);
   setServoAngle(L4, 180);
   delayWithFace(600);
+  if (shouldAbortMotion()) return;
   setServoAngle(L3, 90);
   setServoAngle(R3, 90);
   delayWithFace(3000);
+  if (shouldAbortMotion()) return;
   runStandPose(1);
   if (currentCommand == "bow") currentCommand = "";
 }
@@ -202,6 +224,7 @@ inline void runCutePose() {
   setFaceWithMode("cute", FACE_ANIM_ONCE);
   runStandPose(0); 
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   setServoAngle(L2, 160);
   setServoAngle(R2, 20);
   setServoAngle(R4, 180);
@@ -212,14 +235,18 @@ inline void runCutePose() {
   setServoAngle(L3, 180);
   setServoAngle(R3, 0);
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   for (int i = 0; i < 5; i++) {
     setServoAngle(R4, 180);
     setServoAngle(L4, 45);
     delayWithFace(300);
+    if (shouldAbortMotion()) return;
     setServoAngle(R4, 135);
     setServoAngle(L4, 0);
     delayWithFace(300);
+    if (shouldAbortMotion()) return;
   }
+  if (shouldAbortMotion()) return;
   runStandPose(1);
   if (currentCommand == "cute") currentCommand = "";
 }
@@ -229,6 +256,7 @@ inline void runFreakyPose() {
   setFaceWithMode("freaky", FACE_ANIM_ONCE);
   runStandPose(0); 
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   setServoAngle(L1, 0);
   setServoAngle(R1, 180);
   setServoAngle(L2, 180);
@@ -236,12 +264,16 @@ inline void runFreakyPose() {
   setServoAngle(R4, 90);
   setServoAngle(R3, 0);
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   for (int i = 0; i < 3; i++) {
     setServoAngle(R3, 25);
     delayWithFace(400);
+    if (shouldAbortMotion()) return;
     setServoAngle(R3, 0);
     delayWithFace(400);
+    if (shouldAbortMotion()) return;
   }
+  if (shouldAbortMotion()) return;
   runStandPose(1);
   if (currentCommand == "freaky") currentCommand = "";
 }
@@ -251,15 +283,20 @@ inline void runWormPose() {
   setFaceWithMode("worm", FACE_ANIM_ONCE);
   runStandPose(0);
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   setServoAngle(R1, 180); setServoAngle(R2, 0); setServoAngle(L1, 0); setServoAngle(L2, 180);
   setServoAngle(R4, 90); setServoAngle(R3, 90); setServoAngle(L3, 90); setServoAngle(L4, 90);
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   for(int i=0; i<5; i++) {
     setServoAngle(R3, 45); setServoAngle(L3, 135); setServoAngle(R4, 45); setServoAngle(L4, 135);
     delayWithFace(300);
+    if (shouldAbortMotion()) return;
     setServoAngle(R3, 135); setServoAngle(L3, 45); setServoAngle(R4, 135); setServoAngle(L4, 45);
     delayWithFace(300);
+    if (shouldAbortMotion()) return;
   }
+  if (shouldAbortMotion()) return;
   runStandPose(1);
   if (currentCommand == "worm") currentCommand = "";
 }
@@ -269,15 +306,20 @@ inline void runShakePose() {
   setFaceWithMode("shake", FACE_ANIM_ONCE);
   runStandPose(0);
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   setServoAngle(R1, 135); setServoAngle(L1, 45); setServoAngle(L3, 90); setServoAngle(R3, 90);
   setServoAngle(L2, 90); setServoAngle(R2, 90);
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   for(int i=0; i<5; i++) {
     setServoAngle(R4, 45); setServoAngle(L4, 135);
     delayWithFace(300);
+    if (shouldAbortMotion()) return;
     setServoAngle(R4, 0); setServoAngle(L4, 180);
     delayWithFace(300);
+    if (shouldAbortMotion()) return;
   }
+  if (shouldAbortMotion()) return;
   runStandPose(1);
   if (currentCommand == "shake") currentCommand = "";
 }
@@ -287,11 +329,14 @@ inline void runShrugPose() {
   runStandPose(0);
   setFaceWithMode("dead", FACE_ANIM_ONCE);
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   setServoAngle(R3, 90); setServoAngle(R4, 90); setServoAngle(L3, 90); setServoAngle(L4, 90);
   delayWithFace(1000);
+  if (shouldAbortMotion()) return;
   setFaceWithMode("shrug", FACE_ANIM_ONCE);
   setServoAngle(R3, 0); setServoAngle(R4, 180); setServoAngle(L3, 180); setServoAngle(L4, 0);
   delayWithFace(1500);
+  if (shouldAbortMotion()) return;
   runStandPose(1);
   if (currentCommand == "shrug") currentCommand = "";
 }
@@ -301,6 +346,7 @@ inline void runDeadPose() {
   runStandPose(0);
   setFaceWithMode("dead", FACE_ANIM_BOOMERANG);
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   setServoAngle(R3, 90); setServoAngle(R4, 90); setServoAngle(L3, 90); setServoAngle(L4, 90);
   if (currentCommand == "dead") currentCommand = "";
 }
@@ -310,14 +356,18 @@ inline void runCrabPose() {
   setFaceWithMode("crab", FACE_ANIM_ONCE);
   runStandPose(0);
   delayWithFace(200);
+  if (shouldAbortMotion()) return;
   setServoAngle(R1, 90); setServoAngle(R2, 90); setServoAngle(L1, 90); setServoAngle(L2, 90);
   setServoAngle(R4, 0); setServoAngle(R3, 180); setServoAngle(L3, 45); setServoAngle(L4, 135);
   for(int i=0; i<5; i++) {
     setServoAngle(R4, 45); setServoAngle(R3, 135); setServoAngle(L3, 0); setServoAngle(L4, 180);
     delayWithFace(300);
+    if (shouldAbortMotion()) return;
     setServoAngle(R4, 0); setServoAngle(R3, 180); setServoAngle(L3, 45); setServoAngle(L4, 135);
     delayWithFace(300);
+    if (shouldAbortMotion()) return;
   }
+  if (shouldAbortMotion()) return;
   runStandPose(1);
   if (currentCommand == "crab") currentCommand = "";
 }
@@ -347,7 +397,7 @@ inline void runWalkPose() {
     setServoAngle(L2, 135); setServoAngle(R1, 90);
     if (!pressingCheck("forward", frameDelay)) return;
   }
-  runStandPose(1);
+  if (!shouldAbortMotion()) runStandPose(1);
 }
 
 // Logic reversed from Walk
@@ -372,7 +422,7 @@ inline void runWalkBackward() {
     setServoAngle(L2, 90); setServoAngle(R1, 180);
     if (!pressingCheck("backward", frameDelay)) return;
   }
-  runStandPose(1);
+  if (!shouldAbortMotion()) runStandPose(1);
 }
 
 // Simple turn logic
@@ -399,7 +449,7 @@ inline void runTurnLeft() {
     setServoAngle(R2, 45); setServoAngle(L1, 45);
     if (!pressingCheck("left", frameDelay)) return;  
   }
-  runStandPose(1);
+  if (!shouldAbortMotion()) runStandPose(1);
 }
 
 inline void runTurnRight() {
@@ -425,5 +475,5 @@ inline void runTurnRight() {
     setServoAngle(R1, 135); setServoAngle(L2, 135);
     if (!pressingCheck("right", frameDelay)) return;
   }
-  runStandPose(1);
+  if (!shouldAbortMotion()) runStandPose(1);
 }

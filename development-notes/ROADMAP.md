@@ -1,0 +1,486 @@
+# Sesame AI Robot Roadmap
+
+本文档记录 Sesame AI Robot 的阶段路线、验收标准和当前状态。开发原则是小步推进、每阶段独立验证、每阶段独立提交。
+
+## 状态标记
+
+- 已完成：软件实现和自动化验证已通过，真实硬件验证可能仍需单独记录。
+- 进行中：当前优先开发阶段。
+- 等待硬件：需要用户进行真实硬件连接、烧录、供电或运动测试。
+- 尚未开始：还未进入实现。
+
+## 阶段 0：软件锁存急停
+
+状态：已完成，等待真实硬件验证。
+
+目标：
+
+- 提供软件锁存急停命令。
+- 急停后立即清空当前动作，不自动恢复旧命令。
+- 解除急停后保持无动作状态。
+- 串口、网页和 JSON API 路径均不能绕过急停。
+
+前置条件：
+
+- 原版固件可在默认开发板 `esp32:esp32:lolin_s2_mini` 上编译。
+- 不改变舵机引脚、角度限制和动作序列。
+
+验收标准：
+
+- `git diff --check` 通过。
+- `powershell -ExecutionPolicy Bypass -File ".\scripts\firmware-build.ps1"` 编译成功。
+- 未执行烧录、串口控制或真实舵机动作。
+
+## 阶段 1：通信超时自动软停止
+
+状态：已完成，等待真实硬件验证。
+
+目标：
+
+- 为连续运动建立通信超时保护。
+- 超时只停止连续运动，不触发锁存急停。
+- 超时后不自动进入危险姿态，不自动恢复旧命令。
+- 网页、JSON API 和未来 AI 控制器支持心跳或命令时间戳。
+- 保持旧网页控制兼容。
+
+前置条件：
+
+- 阶段 0 急停已编译通过。
+- 明确连续运动命令集合和一次性姿态命令集合。
+
+验收标准：
+
+- 固件编译通过。
+- 连续运动缺少心跳时自动停止。
+- 姿态动作不因普通等待被误判为急停。
+- 文档补充 API 行为和兼容策略。
+
+实现记录：
+
+- 连续运动命令为 `forward`、`backward`、`left`、`right`。
+- 网络连续运动超时时间为 1200 ms。
+- 网页控制在按住方向键时定期刷新连续动作。
+- JSON API 支持 `{"command":"heartbeat"}` 刷新当前连续动作。
+- 超时会清空当前连续动作并设置 `communicationTimedOut`，不会触发锁存急停。
+
+## 阶段 2：统一状态查询接口
+
+状态：已完成，等待真实硬件验证。
+
+目标：
+
+- 扩展现有 `/api/status`，提供机器可读状态。
+- 状态包含当前命令、动作状态、急停状态、延期解除状态、最后命令时间、通信超时状态、当前表情、固件版本和可用功能。
+- 不破坏旧 JSON API 字段。
+
+前置条件：
+
+- 阶段 1 通信超时字段和行为稳定。
+
+验收标准：
+
+- 新旧状态字段均可读取。
+- README 提供 JSON 示例。
+- 固件编译通过。
+
+实现记录：
+
+- `/api/status` 保留旧字段，并新增 `firmwareVersion`、`uptimeMs`、`motionState`、`motionInProgress`、`emergencyStopActive`、`pendingEmergencyReset`、`lastCommandMs`、`lastCommandAgeMs`、`availableCommands` 和 `capabilities`。
+- `currentCommand` 和 `currentFace` 输出前进行 JSON 字符串转义。
+
+## 阶段 3：ai-controller 基础工程
+
+状态：已完成。
+
+目标：
+
+- 在 `ai-controller/` 建立模块化电脑端控制工程。
+- 包含配置管理、日志、HTTP/JSON 客户端、心跳、命令发送、状态查询、自动重连、急停接口、Mock 机器人、单元测试、README 和启动脚本。
+- 不连接真实机器人，通过 Mock 完成测试。
+
+前置条件：
+
+- 阶段 2 状态接口可用。
+
+验收标准：
+
+- 单元测试通过。
+- Mock 测试覆盖命令、心跳、超时和急停。
+- 不需要 API Key、摄像头或真实硬件。
+
+实现记录：
+
+- 使用 Python 标准库建立 `sesame_ai_robot` 包，当前不引入第三方依赖。
+- 已包含配置、日志、HTTP/JSON 客户端、状态查询、命令发送、心跳、急停接口、有限重连和 Mock 机器人。
+- CLI 和 PowerShell 启动脚本位于 `ai-controller/`。
+- `follow_owner` 等未来行为暂不直接下发到固件，避免未知命令污染固件状态。
+
+## 阶段 4：电脑端摄像头原型
+
+状态：已完成，等待真实摄像头验证。
+
+目标：
+
+- 枚举摄像头。
+- 读取摄像头画面。
+- 统计帧率和延迟。
+- 提供可关闭预览。
+- 无摄像头时使用视频或测试图片。
+- 视觉模块不直接控制舵机。
+
+前置条件：
+
+- ai-controller 基础工程稳定。
+
+验收标准：
+
+- 有摄像头和无摄像头路径均可运行。
+- 测试数据不包含私人媒体。
+
+实现记录：
+
+- 建立 `CameraSource` 抽象、`MockCameraSource`、可选 `OpenCVCameraSource` 和摄像头枚举函数。
+- `camera-smoke --mock` 可在无摄像头情况下生成测试帧并统计 FPS/延迟。
+- 真实摄像头读取需要用户明确确认并安装 OpenCV。
+- 当前视觉模块不发送任何机器人运动命令。
+
+## 阶段 5：人体和物体检测
+
+状态：已完成。
+
+目标：
+
+- 检测人体和常见物体。
+- 输出目标置信度、中心位置和初步距离估计接口。
+- 模型推理与控制逻辑分离。
+- 支持 Mock 测试数据。
+
+前置条件：
+
+- 摄像头原型完成。
+
+验收标准：
+
+- 检测输出结构稳定。
+- 不直接发送舵机角度或底层动作。
+
+实现记录：
+
+- 建立 `BoundingBox`、`Detection`、`DetectionResult` 和 `ObjectDetector` 协议。
+- 提供 `MockObjectDetector`，默认输出一个 `person` 和一个 `object`。
+- 检测 JSON 输出包含类别、置信度、中心点、边界框和 `distanceM` 初步距离字段。
+- `detect-smoke --mock` 可在无真实摄像头和无真实模型情况下验证检测链路。
+- 检测模块不导入机器人客户端，也不发送任何动作命令。
+
+## 阶段 6：主人人脸注册和识别
+
+状态：已完成。
+
+目标：
+
+- 人脸数据默认仅本地保存。
+- 不提交照片和人脸特征。
+- 支持注册、删除和识别。
+- 设置置信度阈值。
+- 无法确认身份时不得默认当作主人。
+
+前置条件：
+
+- 视觉检测基础稳定。
+
+验收标准：
+
+- 测试使用合成或公开非私人样例。
+- 隐私数据路径加入忽略规则或本地说明。
+
+实现记录：
+
+- 建立 `LocalFaceStore`、`FaceIdentity`、`FaceRecognitionResult` 和 `FaceRecognizer` 协议。
+- 私有人脸数据默认路径为 `ai-controller/data/`，已加入 `.gitignore`。
+- `MockFaceRecognizer` 通过阈值确认身份，低于阈值或无 identity 时不会确认主人。
+- 当前不采集真实照片，不生成真实人脸特征。
+
+## 阶段 7：视觉追踪和安全跟随
+
+状态：已完成最小版本，等待真实安全层和硬件验证。
+
+目标：
+
+- 建立高层状态机：`idle`、`searching`、`tracking`、`following`、`target_lost`、`stopped`、`emergency_stop`。
+- AI 控制器只发送高级命令。
+- 未完成真实避障前，不允许开启真实自主跟随。
+
+前置条件：
+
+- 主人识别完成。
+- 固件通信超时和状态查询稳定。
+
+验收标准：
+
+- Mock 场景覆盖目标丢失、误识别、急停和超时。
+- 真实跟随必须等待硬件确认。
+
+实现记录：
+
+- 建立 `TrackingController`、`TrackingConfig`、`TrackingDecision` 和追踪状态枚举。
+- 急停状态优先，通信超时输出 `stop`。
+- 身份未确认时不进入跟随。
+- 默认 `allow_following=false`，只输出 `tracking` 状态，不发送运动命令。
+- 前方障碍物过近时输出 `stop`。
+- 允许跟随时也只输出高级命令，不直接控制舵机角度。
+
+## 电脑模拟测试系统
+
+状态：进行中，优先级高于继续扩大真实硬件能力。
+
+目标：
+
+- 在不连接任何真实硬件的情况下，验证固件协议、AI 控制器、安全策略和场景流程。
+- AI 控制器通过配置选择 `mock`、`simulator` 或 `real_robot`，上层控制代码不得因为运行环境不同而重写。
+- 模拟服务器尽可能保持与真实 ESP32 相同或兼容的 HTTP/JSON 协议。
+- 每个重要安全功能都必须有自动化场景测试。
+
+前置条件：
+
+- 阶段 1 通信超时软停止已完成。
+- 阶段 2 状态查询接口已完成。
+- 普通软件模拟和测试可自动执行；涉及真实 ESP32、串口、舵机、摄像头或传感器时必须暂停询问用户。
+
+### 模拟阶段 1：Mock 机器人服务器
+
+状态：已完成最小版本。
+
+目标：
+
+- 使用与真实 ESP32 相同或兼容的 HTTP/JSON 接口。
+- 支持发送命令、状态查询、普通 `stop`、`emergency_stop`、`reset_emergency_stop` 和通信超时。
+- 支持虚拟电量和虚拟传感器。
+- 不连接任何真实硬件。
+
+验收标准：
+
+- 一条 PowerShell 命令可启动 Mock 机器人服务器。
+- API 字段尽量兼容真实 ESP32。
+- 自动测试覆盖急停、解除急停、普通停止和通信超时。
+
+实现记录：
+
+- `ai-controller` Mock 机器人服务器已提供兼容 `/api/status` 和 `/api/command` 的本地服务。
+- Mock 状态新增 `virtualBatteryPercent` 和 `virtualSensors`。
+- 当前不连接任何真实硬件。
+
+### 模拟阶段 2：场景测试运行器
+
+状态：已完成最小版本。
+
+目标：
+
+- 从 JSON 文件读取事件序列。
+- 自动执行命令。
+- 检查机器人状态。
+- 输出测试通过或失败。
+- 支持正常行走、急停、解除、断联和障碍物场景。
+
+验收标准：
+
+- `simulator/scenarios/` 中有可运行示例场景。
+- `simulator/tests/` 中有自动化测试。
+- 场景失败时输出明确失败步骤和实际状态。
+
+实现记录：
+
+- `simulator/scenario_runner.py` 可从 JSON 文件读取步骤。
+- `simulator/run-scenarios.ps1` 可一条 PowerShell 命令运行全部场景或单个场景。
+- 示例场景覆盖正常行走、急停、解除急停、通信超时和障碍物传感器状态。
+- 自动测试位于 `simulator/tests/`。
+
+### 模拟阶段 3：简单状态可视化
+
+状态：已完成最小版本。
+
+目标：
+
+- 显示当前动作、8 个虚拟舵机角度、急停状态、连接状态、虚拟传感器数据和 OLED 表情。
+- 初期优先使用简单 2D 界面，不急于使用复杂三维物理引擎。
+
+验收标准：
+
+- 一条 PowerShell 命令可启动可视化界面。
+- 可视化界面只读模拟状态，不驱动真实硬件。
+
+实现记录：
+
+- `simulator/run-visualizer.ps1` 可启动终端 2D 状态面板。
+- 显示当前动作、8 个虚拟舵机角度、急停状态、连接状态、虚拟传感器、电量和 OLED 表情。
+- `--demo` 模式循环虚拟命令，`--once` 可用于自动化检查。
+- 不连接任何真实硬件。
+
+### 模拟阶段 4：视觉回放测试
+
+状态：已完成最小版本，真实摄像头访问取决于本机 OpenCV 和摄像头可用性。
+
+目标：
+
+- 支持读取真实摄像头、视频文件、测试图片目录和 Mock 检测结果。
+- 保证视觉模块和机器人控制模块解耦。
+
+验收标准：
+
+- 默认可用 Mock 或测试图片运行。
+- 访问真实摄像头前必须暂停并获得用户明确确认。
+
+实现记录：
+
+- `simulator/run-vision-replay.ps1` 支持 `--source mock`、`--source images` 和 `--source camera`。
+- `simulator/test-images/` 提供可提交的 PGM 测试图片。
+- 图片目录回放和 Mock 检测结果可自动测试。
+- 视觉回放只输出结构化检测结果，不发送机器人控制命令。
+
+### 模拟阶段 5：硬件在环测试
+
+状态：等待硬件确认。
+
+目标：
+
+- 必须等待用户明确确认。
+- 先连接 ESP32，不连接舵机。
+- 再测试单个舵机。
+- 再进行架空的 8 舵机测试。
+- 最后才允许地面运动测试。
+
+验收标准：
+
+- 每个硬件步骤都有恢复方式、风险说明和用户确认记录。
+- 任一步骤失败都不得自动进入下一硬件步骤。
+
+## 阶段 8：传感器安全层
+
+状态：已完成最小版本，等待真实传感器硬件选型。
+
+目标：
+
+- 建立前方距离、左右距离、防跌落、IMU 姿态、碰撞和电池状态接口。
+- 真实硬件型号未确定前先建立抽象接口和 Mock。
+
+前置条件：
+
+- 跟随状态机具备安全层接入点。
+
+验收标准：
+
+- Mock 安全规则可阻断危险动作。
+- 不要求真实传感器在线。
+
+实现记录：
+
+- 建立 `SensorSnapshot`、`SafetyConfig`、`SafetyAssessment` 和 `SafetyMonitor`。
+- 支持前方距离、左右距离、防跌落、IMU 姿态、碰撞和电池状态评估。
+- 普通障碍物和低电量输出 `stop`。
+- 防跌落、碰撞和过大倾角输出 `emergency_stop`。
+- 安全层已接入追踪状态机。
+- Mock 机器人状态提供虚拟电量、虚拟距离、防跌落、碰撞和 IMU 字段。
+
+## 阶段 9：语音与大模型助手
+
+状态：已完成最小 Mock 版本。
+
+目标：
+
+- 分离唤醒词、语音识别、大语言模型、工具调用、语音合成、表情控制和动作权限控制。
+- 大模型不得绕过 ESP32 安全层。
+- 危险动作必须经过本地规则检查。
+
+前置条件：
+
+- AI 控制器和安全状态机稳定。
+
+验收标准：
+
+- 不提交 API Key 或私人录音。
+- Mock 工具调用覆盖安全拒绝路径。
+
+实现记录：
+
+- 建立本地 Mock 唤醒词、Mock 语音识别、Mock 语言模型、Mock TTS 和助手命令权限策略。
+- 当前不调用真实麦克风、不录音、不访问云端服务、不需要 API Key。
+- `assistant-smoke` 可验证本地文本输入到动作/表情/回复计划。
+- 运动命令默认被本地策略拒绝；急停命令始终允许。
+
+## 阶段 10：迁移到板载 AI 主控制器
+
+状态：已完成评估准备，等待真实硬件选型确认。
+
+目标：
+
+- 在电脑端功能稳定后评估树莓派、CM5 或其他单板计算机。
+- 评估摄像头、麦克风阵列、扬声器、功耗和电池续航。
+
+前置条件：
+
+- 电脑端功能稳定。
+
+验收标准：
+
+- 形成硬件选型记录。
+- 用户确认采购或连接方案后再继续真实硬件动作。
+
+实现记录：
+
+- 新增 `development-notes/ONBOARD_AI_EVALUATION.md`。
+- 记录 Raspberry Pi、CM 系列和其他单板计算机的评估方向。
+- 记录摄像头、麦克风、扬声器、电源和电池需求。
+- 明确迁移前必须保持 `mock`、`simulator`、`real_robot` 配置切换。
+- 明确硬件在环测试顺序，不采购、不连接真实硬件。
+
+## 阶段 11：高级功能
+
+状态：进行中。
+
+目标：
+
+- 跌倒检测、自动起身、地形自适应步态、情绪状态、长期记忆和自动返回充电底座。
+
+前置条件：
+
+- 运动、安全、视觉、语音和板载控制器均稳定。
+
+验收标准：
+
+- 每项高级功能独立设计、独立验证、独立提交。
+
+实现记录：
+
+- 新增 `ai-controller/sesame_ai_robot/advanced.py`。
+- 建立跌倒检测、自动起身门槛、地形状态、情绪状态、Mock 记忆和回充意图接口。
+- `real_robot` 模式下自动起身和自动回充必须等待用户明确确认。
+- 当前只返回高层命令建议，不执行真实动作序列，不连接硬件。
+- 新增 `simulator/advanced_scenario_runner.py` 和 `run-advanced-scenarios.ps1`。
+- 覆盖跌倒急停、真实模式自动起身门槛、地形危险和真实模式回充确认门槛。
+- 新增 `BehaviorArbiter` 和 `RobotRuntime`，统一仲裁安全层、追踪层、高级行为和助手计划。
+- `RobotRuntime` 当前只作为最小软件运行时，默认 dry-run，不默认连接真实机器人。
+- 新增 `simulator/integrated_scenario_runner.py` 和 `run-integrated-scenarios.ps1`。
+- 组合场景覆盖跟随中跌倒、低电量、急停后自动起身请求、真实模式自动起身门槛、距离未知、距离过近、身份丢失、通信超时恢复、AI 动作被安全层否决和未知命令拒绝。
+- 固件和 Mock 协议已拒绝未知命令、空命令、缺失命令和非法 JSON。
+- 软件急停是软件锁存保护，不等于物理断电急停。
+
+## 2026-07-22 Update
+
+Status: completed for software/mock/simulator/firmware compile; waiting for real hardware validation.
+
+- Firmware API now uses ArduinoJson and a 512-byte request body limit.
+- Mock and firmware protocol errors are aligned in `development-notes/API_PROTOCOL.md`.
+- Runtime confirmation is action-bound, expiring, one-time, and context-bound.
+- Emergency reset requires confirmation and does not restore previous motion.
+- Real self-righting and charging remain blocked by default without hardware validation.
+- Runtime CLI dry-run is available for mock and simulator modes.
+- Real robot mode remains blocked by default.
+
+## 2026-07-22 Confirmation Closure Update
+
+Status: completed for software/mock/simulator; waiting for hardware validation.
+
+- Runtime now owns the persistent confirmation store.
+- Arbiter no longer creates temporary stores or accepts external grants.
+- Dangerous actions can only be authorized by a Runtime-consumed confirmation ID.
+- Integrated scenarios now exercise full request/confirm/replay flows.
+- `real_robot` remains blocked by default, and self-righting/charging are still not validated on real hardware.

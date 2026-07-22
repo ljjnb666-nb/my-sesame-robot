@@ -1,0 +1,17 @@
+{
+  "name": "real_self_righting_gate_integrated",
+  "config": {
+    "runtimeMode": "real_robot",
+    "allowSelfRighting": true
+  },
+  "steps": [
+    {
+      "name": "real robot self-righting requires confirmation",
+      "posture": "fallen",
+      "expect": {
+        "command": null,
+        "requiresUserConfirmation": true
+      }
+    }
+  ]
+}

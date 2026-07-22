@@ -1,0 +1,1 @@
+{"name":"malformed_json_protocol","steps":[{"name":"protocol errors are covered by mock protocol tests","expect":{"command":null,"source":"idle"}}]}

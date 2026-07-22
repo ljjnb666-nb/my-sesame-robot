@@ -1,0 +1,23 @@
+{
+  "name": "emergency_reset_fake_confirmation_id",
+  "runtimeFlow": true,
+  "config": {
+    "initialRobotStatus": {
+      "emergencyStopActive": true
+    }
+  },
+  "steps": [
+    {
+      "name": "submit fake id",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "submitConfirmation": "fake-confirmation-id",
+      "expect": {
+        "command": null,
+        "confirmationState": "unknown_id",
+        "sentCommand": false
+      }
+    }
+  ]
+}

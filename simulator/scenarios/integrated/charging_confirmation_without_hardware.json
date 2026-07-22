@@ -1,0 +1,36 @@
+{
+  "name": "charging_confirmation_without_hardware",
+  "runtimeFlow": true,
+  "config": {
+    "runtimeMode": "real_robot",
+    "allowRealRobot": true,
+    "allowAutoDocking": true
+  },
+  "steps": [
+    {
+      "name": "request charging confirmation",
+      "sensor": {
+        "batteryPercent": 20
+      },
+      "expect": {
+        "command": null,
+        "requiresUserConfirmation": true,
+        "confirmationAction": "charging_dock",
+        "confirmationState": "requested"
+      }
+    },
+    {
+      "name": "valid confirmation remains hardware blocked",
+      "sensor": {
+        "batteryPercent": 20
+      },
+      "submitConfirmation": "last",
+      "expect": {
+        "command": null,
+        "source": "advanced",
+        "confirmationState": "hardware_blocked",
+        "sentCommand": false
+      }
+    }
+  ]
+}

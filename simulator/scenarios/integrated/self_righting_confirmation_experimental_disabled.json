@@ -1,0 +1,39 @@
+{
+  "name": "self_righting_confirmation_experimental_disabled",
+  "runtimeFlow": true,
+  "config": {
+    "runtimeMode": "real_robot",
+    "allowRealRobot": true,
+    "allowSelfRighting": true,
+    "allowExperimentalSelfRightingCommand": false,
+    "forceSelfRightingPosture": true,
+    "maxSafetyTiltDeg": 90
+  },
+  "steps": [
+    {
+      "name": "request self-righting confirmation",
+      "sensor": {
+        "imuRollDeg": 72
+      },
+      "expect": {
+        "command": null,
+        "requiresUserConfirmation": true,
+        "confirmationAction": "self_righting",
+        "confirmationState": "requested"
+      }
+    },
+    {
+      "name": "valid confirmation remains hardware blocked",
+      "sensor": {
+        "imuRollDeg": 72
+      },
+      "submitConfirmation": "last",
+      "expect": {
+        "command": null,
+        "source": "advanced",
+        "confirmationState": "hardware_blocked",
+        "sentCommand": false
+      }
+    }
+  ]
+}
