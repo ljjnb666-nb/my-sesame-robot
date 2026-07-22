@@ -129,9 +129,23 @@ jobs:
           "## Python syntax validation`n`n- Result: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Set up Arduino CLI
-        uses: arduino/setup-arduino-cli@v2
-        with:
-          version: "1.5.1"
+        run: |
+          $ArduinoCliVersion = "1.5.1"
+          $Archive = Join-Path $env:RUNNER_TEMP "arduino-cli.zip"
+          $InstallDir = Join-Path $env:RUNNER_TEMP "arduino-cli"
+          New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+          Invoke-WebRequest `
+            -Uri "https://downloads.arduino.cc/arduino-cli/arduino-cli_${ArduinoCliVersion}_Windows_64bit.zip" `
+            -OutFile $Archive
+          Expand-Archive -Path $Archive -DestinationPath $InstallDir -Force
+          $CliPath = Get-ChildItem -Path $InstallDir -Recurse -Filter arduino-cli.exe | Select-Object -First 1
+          if (-not $CliPath) {
+            Write-Error "arduino-cli.exe was not found after extraction"
+            exit 1
+          }
+          $CliDir = Split-Path -Parent $CliPath.FullName
+          "$CliDir" | Out-File -FilePath $env:GITHUB_PATH -Append
+          & $CliPath.FullName version
 
       - name: Cache Arduino packages and libraries
         uses: actions/cache@v5
