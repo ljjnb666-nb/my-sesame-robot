@@ -15,6 +15,8 @@ from .detection import MockObjectDetector, result_to_jsonable as detection_resul
 from .face_identity import FaceIdentity, MockFaceRecognizer, recognition_to_jsonable
 from .assistant import AssistantAction, AssistantPlan, AssistantPolicy, AssistantStep, MockAssistantPipeline, plan_to_jsonable
 from .advanced import RuntimeMode
+from .ai_interaction import AIInteractionLoop, reply_to_jsonable
+from .ai_provider import provider_from_env
 from .confirmation import ConfirmationStore
 from .runtime import RobotRuntime, RobotRuntimeConfig, result_to_jsonable as runtime_result_to_jsonable
 from .tracking import TrackingDecision, TrackingState
@@ -94,6 +96,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     simulator_run = subparsers.add_parser("simulator-run-scenario", help="Run virtual hardware simulator scenarios")
     simulator_run.add_argument("paths", nargs="*")
+
+    ai_command = subparsers.add_parser("ai-command", help="Run one natural-language AI interaction loop turn")
+    ai_command.add_argument("--mode", choices=[RuntimeMode.MOCK.value, RuntimeMode.SIMULATOR.value], default=RuntimeMode.SIMULATOR.value)
+    ai_command.add_argument("--provider", default="mock")
+    ai_command.add_argument("--text", required=True)
+    ai_command.add_argument("--confirmation-id", default=None)
+    ai_command.add_argument("--json", action="store_true")
+
+    ai_chat = subparsers.add_parser("ai-chat", help="Run a bounded non-hardware AI chat loop")
+    ai_chat.add_argument("--mode", choices=[RuntimeMode.MOCK.value, RuntimeMode.SIMULATOR.value], default=RuntimeMode.SIMULATOR.value)
+    ai_chat.add_argument("--provider", default="mock")
+    ai_chat.add_argument("--turns", type=int, default=5)
+
+    ai_eval = subparsers.add_parser("ai-eval", help="Run deterministic AI interaction eval cases")
+    ai_eval.add_argument("--cases", default=None)
+    ai_eval.add_argument("--json", action="store_true")
+
+    ai_run_scenario = subparsers.add_parser("ai-run-scenario", help="Run deterministic AI eval cases from a file")
+    ai_run_scenario.add_argument("--cases", default=None)
+    ai_run_scenario.add_argument("--json", action="store_true")
+
+    subparsers.add_parser("ai-session-reset", help="Reset an in-memory AI session")
     return parser
 
 
@@ -150,6 +174,63 @@ def main() -> int:
     if args.command == "assistant-smoke":
         pipeline = MockAssistantPipeline(policy=AssistantPolicy(allow_motion_commands=args.allow_motion))
         print(json.dumps(plan_to_jsonable(pipeline.handle_text(args.text)), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "ai-session-reset":
+        loop = AIInteractionLoop()
+        loop.reset_session()
+        print(json.dumps({"status": "ok", "message": "AI session reset in memory"}, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "ai-command":
+        try:
+            loop = AIInteractionLoop(
+                provider=provider_from_env(args.provider),
+                runtime_mode=RuntimeMode(args.mode),
+            )
+            reply = loop.handle_text(args.text, confirmation_id=args.confirmation_id)
+        except Exception as exc:
+            print(json.dumps({"status": "failed", "error": str(exc)}, ensure_ascii=False, indent=2))
+            return 2
+        payload = reply_to_jsonable(reply, include_confirmation_id=True)
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(reply.user_message)
+            if reply.requires_confirmation and reply.confirmation_id:
+                print(f"confirmation_required {reply.confirmation_id}")
+        return 0 if reply.status in {"ok", "confirmation_required", "clarification_required"} else 1
+
+    if args.command in {"ai-eval", "ai-run-scenario"}:
+        repo = Path(__file__).resolve().parents[2]
+        cases_path = Path(args.cases) if args.cases else repo / "ai-controller" / "evals" / "ai_interaction_cases.json"
+        try:
+            from .ai_eval import run_eval_file
+
+            summary = run_eval_file(cases_path)
+        except Exception as exc:
+            print(json.dumps({"status": "failed", "error": str(exc)}, ensure_ascii=False, indent=2))
+            return 2
+        if args.json:
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
+        else:
+            print(f"AI eval: {summary['passed']}/{summary['total']} PASS")
+        return 0 if summary["passed"] == summary["total"] else 1
+
+    if args.command == "ai-chat":
+        loop = AIInteractionLoop(
+            provider=provider_from_env(args.provider),
+            runtime_mode=RuntimeMode(args.mode),
+        )
+        for _ in range(max(1, min(args.turns, 10))):
+            try:
+                text = input("> ").strip()
+            except EOFError:
+                break
+            if text in {"exit", "quit"}:
+                break
+            reply = loop.handle_text(text)
+            print(reply.user_message)
         return 0
 
     if args.command == "simulator-run-scenario":
