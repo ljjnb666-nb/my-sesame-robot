@@ -75,6 +75,66 @@ class TrackingControllerTest(unittest.TestCase):
         self.assertEqual(decision.state, TrackingState.FOLLOWING)
         self.assertEqual(decision.command, "turn_right")
 
+    def test_centered_target_with_unknown_distance_does_not_walk_forward(self):
+        frame = MockCameraSource(width=100, height=100).read()
+        result = DetectionResult(
+            source=frame.source,
+            captured_at=frame.captured_at,
+            processed_at=frame.captured_at,
+            frame_width=100,
+            frame_height=100,
+            detections=(Detection("person", 0.9, BoundingBox(45, 20, 10, 30), distance_m=None),),
+        )
+
+        decision = TrackingController(TrackingConfig(allow_following=True)).update(
+            result,
+            confirmed_identity(),
+            {"emergencyStopActive": False, "virtualSensors": {"frontDistanceM": 1.0}},
+        )
+
+        self.assertEqual(decision.state, TrackingState.TRACKING)
+        self.assertIsNone(decision.command)
+
+    def test_centered_target_too_close_stops_without_backing_up(self):
+        frame = MockCameraSource(width=100, height=100).read()
+        result = DetectionResult(
+            source=frame.source,
+            captured_at=frame.captured_at,
+            processed_at=frame.captured_at,
+            frame_width=100,
+            frame_height=100,
+            detections=(Detection("person", 0.9, BoundingBox(45, 20, 10, 30), distance_m=0.4),),
+        )
+
+        decision = TrackingController(TrackingConfig(allow_following=True)).update(
+            result,
+            confirmed_identity(),
+            {"emergencyStopActive": False, "virtualSensors": {"frontDistanceM": 1.0}},
+        )
+
+        self.assertEqual(decision.state, TrackingState.STOPPED)
+        self.assertEqual(decision.command, "stop")
+
+    def test_centered_target_far_enough_walks_forward(self):
+        frame = MockCameraSource(width=100, height=100).read()
+        result = DetectionResult(
+            source=frame.source,
+            captured_at=frame.captured_at,
+            processed_at=frame.captured_at,
+            frame_width=100,
+            frame_height=100,
+            detections=(Detection("person", 0.9, BoundingBox(45, 20, 10, 30), distance_m=1.5),),
+        )
+
+        decision = TrackingController(TrackingConfig(allow_following=True)).update(
+            result,
+            confirmed_identity(),
+            {"emergencyStopActive": False, "virtualSensors": {"frontDistanceM": 1.0}},
+        )
+
+        self.assertEqual(decision.state, TrackingState.FOLLOWING)
+        self.assertEqual(decision.command, "walk_forward")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,7 +24,11 @@ class SensorSnapshot:
 
     @classmethod
     def from_robot_status(cls, status: dict[str, Any]) -> "SensorSnapshot":
-        sensors = status.get("virtualSensors", {})
+        sensors = status.get("sensors") or status.get("virtualSensors", {})
+        battery = status.get("battery") if isinstance(status.get("battery"), dict) else {}
+        battery_percent = _optional_int(battery.get("percent"))
+        if battery_percent is None:
+            battery_percent = _optional_int(status.get("virtualBatteryPercent"))
         return cls(
             front_distance_m=_optional_float(sensors.get("frontDistanceM")),
             left_distance_m=_optional_float(sensors.get("leftDistanceM")),
@@ -33,7 +37,7 @@ class SensorSnapshot:
             collision_detected=bool(sensors.get("collisionDetected", False)),
             imu_roll_deg=_optional_float(sensors.get("imuRollDeg")),
             imu_pitch_deg=_optional_float(sensors.get("imuPitchDeg")),
-            battery_percent=_optional_int(status.get("virtualBatteryPercent")),
+            battery_percent=battery_percent,
         )
 
 

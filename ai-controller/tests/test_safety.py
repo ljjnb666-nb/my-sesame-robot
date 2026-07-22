@@ -55,6 +55,30 @@ class SafetyMonitorTest(unittest.TestCase):
         self.assertTrue(snapshot.collision_detected)
         self.assertEqual(snapshot.imu_pitch_deg, 5.0)
 
+    def test_real_sensor_fields_override_virtual_fields(self):
+        snapshot = SensorSnapshot.from_robot_status({
+            "battery": {"percent": 80},
+            "sensors": {
+                "frontDistanceM": 0.5,
+                "leftDistanceM": 0.4,
+                "rightDistanceM": 0.3,
+                "cliffDetected": False,
+                "collisionDetected": False,
+                "imuRollDeg": 1.5,
+                "imuPitchDeg": -2.0,
+            },
+            "virtualBatteryPercent": 10,
+            "virtualSensors": {
+                "frontDistanceM": 0.1,
+                "cliffDetected": True,
+            },
+        })
+
+        self.assertEqual(snapshot.battery_percent, 80)
+        self.assertEqual(snapshot.front_distance_m, 0.5)
+        self.assertFalse(snapshot.cliff_detected)
+        self.assertEqual(snapshot.imu_pitch_deg, -2.0)
+
 
 if __name__ == "__main__":
     unittest.main()

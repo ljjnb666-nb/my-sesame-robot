@@ -31,6 +31,8 @@ class TrackingConfig:
     allow_following: bool = False
     target_label: str = "person"
     center_deadband: float = 0.12
+    follow_start_distance_m: float = 1.2
+    follow_stop_distance_m: float = 0.7
 
 
 class TrackingController:
@@ -78,6 +80,15 @@ class TrackingController:
             command = "turn_left"
         elif normalized_center_x > 0.5 + self.config.center_deadband:
             command = "turn_right"
+        elif target.distance_m is None:
+            self.state = TrackingState.TRACKING
+            return TrackingDecision(self.state, None, "target distance is unknown")
+        elif target.distance_m <= self.config.follow_stop_distance_m:
+            self.state = TrackingState.STOPPED
+            return TrackingDecision(self.state, "stop", "target is too close")
+        elif target.distance_m < self.config.follow_start_distance_m:
+            self.state = TrackingState.TRACKING
+            return TrackingDecision(self.state, None, "target is within follow hold distance")
         else:
             command = "walk_forward"
 
