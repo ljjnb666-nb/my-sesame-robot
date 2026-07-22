@@ -234,3 +234,18 @@ powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" runtime-run --mode simu
 ```
 
 `real_robot` remains blocked by default. Runtime CLI does not open a camera, microphone, serial port, or send real hardware commands.
+
+## 2026-07-22 Confirmation Closure Update
+
+- `RobotRuntime` now owns the only long-lived `ConfirmationStore`.
+- Arbiter returns a confirmation requirement only; it does not allocate temporary stores or trust external grants.
+- Runtime creates `ConfirmationRequest`, returns the ID, and later accepts only `confirmation_id`.
+- Runtime atomically consumes the ID before execution. Replay returns `already_used`.
+- `user_confirmed_actions` and public `confirmation_grants` inputs were removed from Runtime and Arbiter.
+- Confirmation failure states are exposed in Runtime JSON output and logs.
+
+Single-process CLI demo:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" runtime-confirmation-demo --mode mock --dry-run
+```

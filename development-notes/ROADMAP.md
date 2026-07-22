@@ -474,3 +474,13 @@ Status: completed for software/mock/simulator/firmware compile; waiting for real
 - Real self-righting and charging remain blocked by default without hardware validation.
 - Runtime CLI dry-run is available for mock and simulator modes.
 - Real robot mode remains blocked by default.
+
+## 2026-07-22 Confirmation Closure Update
+
+Status: completed for software/mock/simulator; waiting for hardware validation.
+
+- Runtime now owns the persistent confirmation store.
+- Arbiter no longer creates temporary stores or accepts external grants.
+- Dangerous actions can only be authorized by a Runtime-consumed confirmation ID.
+- Integrated scenarios now exercise full request/confirm/replay flows.
+- `real_robot` remains blocked by default, and self-righting/charging are still not validated on real hardware.

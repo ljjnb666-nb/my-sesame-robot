@@ -126,3 +126,22 @@ Impact:
 - Mock protocol tests now validate types, oversize bodies, non-object JSON, and stable error payloads.
 - Runtime CLI supports mock/simulator dry-run JSON output.
 - `real_robot` remains blocked by default.
+
+## ADR-007: Runtime Owns Confirmation Grants
+
+Status: accepted.
+
+Decision:
+- `RobotRuntime` is the owner of `ConfirmationStore`.
+- `BehaviorArbiter` may report that an action requires confirmation, but it does not create a store, persist a request, or accept public grants.
+- Callers submit only `confirmation_id`; Runtime computes the current context and calls `ConfirmationStore.consume()` to validate and consume in one operation.
+- `user_confirmed_actions` and externally supplied `ConfirmationGrant` inputs are removed.
+
+Reason:
+- A temporary store in Arbiter cannot validate a later user confirmation.
+- Action strings and caller-constructed grants can bypass safety.
+- Confirmation validation and consumption must be atomic to prevent replay.
+
+Impact:
+- Confirmation lifecycle tests now assert `unknown_id`, `expired`, `action_mismatch`, `context_changed`, and `already_used`.
+- Runtime logs record real safety severity and confirmation state.

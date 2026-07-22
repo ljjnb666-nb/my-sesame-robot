@@ -84,3 +84,14 @@ Heartbeat:
 Software emergency stop is not the same as a physical power-disconnect emergency stop. `reset_emergency_stop` must go through the AI controller confirmation workflow before the AI controller sends it. Resetting does not restore an old movement command; tracking must reacquire the target and the assistant must provide a new command.
 
 `stand` is a standing pose, not validated real self-righting. There is currently no real charging dock hardware, navigation, or docking command.
+
+## 2026-07-22 Confirmation Trust Boundary Update
+
+- `RobotRuntime` owns the long-lived `ConfirmationStore`.
+- `BehaviorArbiter` does not create or persist confirmation requests.
+- External callers cannot provide trusted `ConfirmationGrant` objects.
+- Dangerous actions accept only a `confirmation_id` submitted back to `RobotRuntime`.
+- Runtime validates and consumes the confirmation atomically before it asks Arbiter for an authorized final action.
+- Confirmation IDs are action-bound, context-bound, expiring, and one-time use.
+- Structured confirmation errors are: `unknown_id`, `expired`, `action_mismatch`, `context_changed`, and `already_used`.
+- `user_confirmed_actions` is no longer an accepted Runtime or Arbiter input and cannot bypass confirmation.

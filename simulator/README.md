@@ -195,3 +195,10 @@ powershell -ExecutionPolicy Bypass -File ".\run-vision-replay.ps1" --source came
 - `expectRejectedActions` is preferred for new scenarios. `expectBlockedActions` remains for compatibility.
 - The selected final command must not appear in `rejectedActions`; communication-timeout `stop` is the selected command, not a rejected action.
 - Protocol malformed JSON and oversized payload behavior is tested in `ai-controller/tests/test_mock_robot_protocol.py`; the integrated protocol scenario files document the coverage entry point.
+
+## 2026-07-22 Confirmation Lifecycle Scenario Update
+
+- Confirmation scenarios now use `RobotRuntime`, a persistent `ConfirmationStore`, and the mock robot server in one process.
+- Scenario JSON no longer constructs `ConfirmationGrant`.
+- Runtime-flow scenarios cover request, valid submit, replay, expired ID, wrong action, changed context, fake ID, emergency reset without motion resume, self-righting hardware block, and charging hardware block.
+- `runtimeFlow: true` scenarios use `submitConfirmation: "last"` to submit the actual ID returned by the previous request step.

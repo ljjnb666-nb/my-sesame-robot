@@ -230,3 +230,13 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
   - Integrated scenarios: 25 PASS.
   - Firmware compile: PASS, 1,138,202 bytes flash (86%), 79,456 bytes RAM (24%).
 - No real hardware testing was performed. No serial port was opened, no ESP32 was flashed, no servo was driven, no camera or microphone was accessed, and no real self-righting or charging behavior was executed.
+
+## 2026-07-22 Confirmation Closure Follow-up
+
+- Fixed confirmation ownership: `RobotRuntime` holds the long-lived `ConfirmationStore`.
+- Removed unsafe Runtime and Arbiter inputs: `user_confirmed_actions` and external `confirmation_grants`.
+- Added atomic `ConfirmationStore.consume()` with structured errors.
+- Runtime now accepts only `confirmation_id` for dangerous action confirmation.
+- Runtime logs now record actual safety severity (`ok`, `stop`, `emergency_stop`) and confirmation states.
+- Runtime confirmation demo is available through `run-cli.ps1 runtime-confirmation-demo --mode mock --dry-run`.
+- Integrated confirmation scenarios now perform real request/submit/replay flows instead of constructing grants directly.
