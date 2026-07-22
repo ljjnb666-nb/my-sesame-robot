@@ -1,6 +1,6 @@
 # Sesame AI Robot Project State
 
-最后更新：2026-07-18
+最后更新：2026-07-22
 
 ## 当前分支
 
@@ -10,20 +10,28 @@
 
 ## 最新提交
 
-- `9618d22 feat: add advanced behavior mock layer`
-- 当前待提交阶段：`feat: add advanced behavior scenarios`
+- `28e5830 test: add integrated safety scenarios`
+- 当前待提交阶段：`docs: sync ai robot project state`
 
 ## 已完成能力
 
 - 原版固件可通过 Arduino CLI 编译脚本验证。
 - 固件已模块化为主入口、动作序列、表情位图和网页资源。
 - JSON API 已存在 `/api/status` 和 `/api/command`。
+- 已修复固件和 Mock 服务器未知命令协议：
+  - 未知命令返回 HTTP 400 和结构化 JSON 错误 `unknown_command`。
+  - 空命令返回 `empty_command`。
+  - 缺少 `command` 且不是 face-only 请求时返回 `missing_command`。
+  - 非法 JSON 返回 `invalid_json`。
+  - 急停期间普通动作返回 `emergency_stop_active`，不会污染 `currentCommand`。
+  - 未知命令不会让 `motionState` 进入 `moving`。
 - 已加入软件锁存急停：
   - 支持 `emergency_stop`、`estop` 和串口短命令。
   - 支持 `reset_emergency_stop`。
   - 急停后清空当前命令。
   - 急停期间阻断普通动作命令。
   - 解除急停后保持无动作状态。
+  - 软件急停不等于物理断电急停，不能替代电源级安全开关。
 - 已实现通信超时自动软停止：
   - 连续运动命令需要重复命令或心跳刷新。
   - 超时只清空连续动作，不触发锁存急停。
@@ -70,11 +78,14 @@
   - 身份未确认时不进入跟随。
   - 默认不允许真实跟随，只输出 tracking 状态。
   - 障碍物过近时输出高级 `stop` 命令。
+  - 距离未知时不默认前进，目标过近时只停止，不自动后退。
+  - 已跟随目标丢失或身份丢失时输出 `stop`，避免连续运动延续。
 - 已建立传感器安全层最小版本：
   - 支持前方距离、左右距离、防跌落、IMU 姿态、碰撞和电池状态评估。
   - 普通障碍物和低电量输出高级 `stop`。
   - 防跌落、碰撞和过大倾角输出高级 `emergency_stop`。
   - 安全层已接入追踪状态机和 Mock 状态。
+  - `SensorSnapshot.from_robot_status()` 优先读取真实 `sensors` 和 `battery` 字段，虚拟字段作为回退。
 - 已建立模拟系统简单状态可视化：
   - `simulator/run-visualizer.ps1` 启动终端 2D 状态面板。
   - 显示当前动作、8 个虚拟舵机角度、急停状态、连接状态、虚拟传感器、电量和 OLED 表情。
@@ -102,6 +113,17 @@
   - 新增 `run-advanced-scenarios.ps1`。
   - 覆盖跌倒急停、真实模式自动起身确认门槛、地形危险和真实模式回充确认门槛。
   - 高级场景直接验证 AI 行为层，不连接真实硬件。
+- 已建立统一决策仲裁器和最小运行时：
+  - 新增 `BehaviorArbiter`、`ArbiterInput` 和 `RobotActionPlan`。
+  - 统一仲裁安全层、追踪层、高级行为和助手计划。
+  - 安全决策优先覆盖追踪、助手和高级行为。
+  - 未知命令在进入 `RobotClient` 前被拒绝。
+  - 新增 `RobotRuntime`，支持单步、固定次数循环、dry-run、mock/simulator 模式。
+  - `real_robot` 模式默认禁止，必须显式确认后才允许进入。
+- 已建立组合场景测试：
+  - 新增 `simulator/integrated_scenario_runner.py`。
+  - 新增 `run-integrated-scenarios.ps1`。
+  - 覆盖跟随中跌倒、跟随中低电量、急停后自动起身请求、真实模式自动起身门槛、目标距离未知、目标过近、身份丢失、通信超时恢复、AI 动作被安全层否决和未知命令拒绝。
 
 ## 当前开发环境
 
@@ -123,7 +145,7 @@ powershell -ExecutionPolicy Bypass -File ".\scripts\firmware-build.ps1"
 结果：
 
 - 编译状态：成功。
-- 程序存储空间：1,133,894 bytes / 1,310,720 bytes，86%。
+- 程序存储空间：1,134,938 bytes / 1,310,720 bytes，86%。
 - 动态内存：79,456 bytes / 327,680 bytes，24%，剩余 248,224 bytes。
 - 重要警告：本次输出未显示编译警告。
 - 输出目录：`.build/output`
@@ -141,18 +163,20 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 结果：
 
 - 单元测试状态：成功。
-- 测试数量：33。
-- 模拟器测试数量：8。
+- 测试数量：66。
+- 模拟器测试数量：14。
 - CLI 冒烟测试：Mock 服务启动后，`run-cli.ps1 status` 成功返回状态 JSON。
 - 摄像头冒烟测试：`run-cli.ps1 camera-smoke --mock --frames 10` 成功返回 FPS 和延迟统计。
 - 检测冒烟测试：`run-cli.ps1 detect-smoke --mock` 成功返回 Mock 人体和物体检测 JSON。
 - 人脸识别冒烟测试：`run-cli.ps1 face-id-smoke` 成功返回 Mock 身份确认 JSON。
-- 模拟场景测试：`simulator/run-scenarios.ps1` 成功运行全部示例场景。
+- 模拟场景测试：`simulator/run-scenarios.ps1` 成功运行 6 个示例场景。
+- 高级行为场景测试：`simulator/run-advanced-scenarios.ps1` 成功运行 4 个场景。
+- 组合场景测试：`simulator/run-integrated-scenarios.ps1` 成功运行 10 个场景。
 - 追踪状态机测试：覆盖急停、身份未确认、默认不跟随、障碍物停止和目标偏右转向。
 - 传感器安全层测试：覆盖安全状态、障碍物、碰撞、防跌落、倾角、低电量和状态解析。
 - 可视化冒烟测试：`simulator/run-visualizer.ps1 --once --demo` 成功输出一帧模拟状态。
 - 视觉回放测试：Mock 来源和测试图片目录来源均通过自动化测试。
-- 真实摄像头测试：用户已允许访问；本机 Python 缺少 `cv2`，摄像头枚举和读取返回清晰错误并以非零退出码结束。
+- 真实摄像头测试：本轮未执行。
 - 助手流水线测试：覆盖无唤醒词忽略、急停允许、表情设置、表达动作、默认拒绝运动和模拟允许运动。
 - 真实机器人连接：未进行。
 - 真实摄像头访问：未进行。
@@ -166,12 +190,12 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 ## 下一项任务
 
-优先任务：阶段 11 高级功能与现有控制流程集成。
+优先任务：阶段 11 运行时 CLI 和更多 dry-run 集成。
 
 最小实现方向：
 
-- 将高级行为层与现有追踪、安全和助手策略逐步接入。
-- 补充组合场景，例如跟随中跌倒、低电量时停止跟随、急停后拒绝自动起身。
+- 为 `RobotRuntime` 增加 CLI dry-run 入口。
+- 扩展组合场景输出为更完整的结构化日志。
 - 不进入真实起身、真实回充或地面运动测试。
 
 ## 尚未完成的真实硬件验证
@@ -186,5 +210,6 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 - 验证解除急停后机器人保持无动作状态。
 - 验证通信超时后连续运动自动停止且不锁存急停。
 - 验证真实摄像头枚举、读取、预览关闭和帧率延迟统计。
+- 验证真实传感器字段来自实体 ESP32 的完整状态。
 - 验证真实人脸注册、删除和识别流程；不得提交照片或特征数据。
 - 验证供电、电池、电机电流和舵机温度是否安全。

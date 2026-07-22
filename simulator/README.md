@@ -72,6 +72,25 @@ powershell -ExecutionPolicy Bypass -File ".\run-advanced-scenarios.ps1"
 - `scenarios/advanced/terrain_unsafe.json`
 - `scenarios/advanced/charging_gate.json`
 
+组合场景使用独立运行器，将安全层、追踪层、高级行为、助手计划和 Arbiter 放在同一条链路中验证：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-integrated-scenarios.ps1"
+```
+
+当前组合场景：
+
+- `scenarios/integrated/following_fall.json`
+- `scenarios/integrated/following_low_battery.json`
+- `scenarios/integrated/emergency_blocks_self_righting.json`
+- `scenarios/integrated/real_self_righting_gate.json`
+- `scenarios/integrated/target_distance_unknown.json`
+- `scenarios/integrated/target_too_close.json`
+- `scenarios/integrated/identity_lost_stops.json`
+- `scenarios/integrated/communication_timeout_recovery.json`
+- `scenarios/integrated/assistant_motion_blocked_by_obstacle.json`
+- `scenarios/integrated/unknown_command_rejected.json`
+
 场景步骤支持：
 
 - `command`：发送机器人命令。
@@ -88,6 +107,17 @@ powershell -ExecutionPolicy Bypass -File ".\run-advanced-scenarios.ps1"
 - `sensor`：设置 Mock IMU、电量、防跌落和碰撞输入。
 - `posture`：为自动起身门槛提供姿态状态。
 - `expect`：断言高级行为决策字段，例如 `state`、`command` 和 `requiresUserConfirmation`。
+
+组合场景步骤支持：
+
+- `config`：设置 `allowFollowing`、`runtimeMode`、`allowSelfRighting` 和 `allowAutoDocking`。
+- `robotStatus`：设置急停、通信超时等机器人状态。
+- `sensor`：设置 Mock 距离、IMU、电量、防跌落和碰撞输入。
+- `target`：设置目标是否可见、画面中心位置和 `distanceM`。
+- `identityConfirmed`：设置主人身份是否确认。
+- `assistant`：设置助手提出的命令、表情或语音。
+- `expect`：断言最终 Arbiter 输出和追踪状态。
+- `expectBlockedActions`：断言被安全层或策略阻止的动作。
 
 ## 阶段 3：简单状态可视化
 

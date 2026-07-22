@@ -456,3 +456,9 @@
 - 当前只返回高层命令建议，不执行真实动作序列，不连接硬件。
 - 新增 `simulator/advanced_scenario_runner.py` 和 `run-advanced-scenarios.ps1`。
 - 覆盖跌倒急停、真实模式自动起身门槛、地形危险和真实模式回充确认门槛。
+- 新增 `BehaviorArbiter` 和 `RobotRuntime`，统一仲裁安全层、追踪层、高级行为和助手计划。
+- `RobotRuntime` 当前只作为最小软件运行时，默认 dry-run，不默认连接真实机器人。
+- 新增 `simulator/integrated_scenario_runner.py` 和 `run-integrated-scenarios.ps1`。
+- 组合场景覆盖跟随中跌倒、低电量、急停后自动起身请求、真实模式自动起身门槛、距离未知、距离过近、身份丢失、通信超时恢复、AI 动作被安全层否决和未知命令拒绝。
+- 固件和 Mock 协议已拒绝未知命令、空命令、缺失命令和非法 JSON。
+- 软件急停是软件锁存保护，不等于物理断电急停。

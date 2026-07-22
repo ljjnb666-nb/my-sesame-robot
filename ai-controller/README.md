@@ -22,7 +22,9 @@
 - 追踪状态机：消费检测、身份和机器人状态，默认不发送真实跟随命令。
 - Mock 语音与大模型助手：提供本地唤醒词、语音识别、语言模型、TTS 和命令权限流水线。
 - 高级功能 Mock 层：提供跌倒检测、自动起身门槛、地形状态、情绪状态、内存 Mock 和回充意图。
-- 单元测试：覆盖状态查询、命令别名、急停、心跳、通信超时、摄像头 Mock、检测 Mock、人脸身份 Mock、传感器安全层、追踪状态机、助手策略和高级功能安全边界。
+- 统一决策仲裁器：统一安全层、追踪层、高级行为和助手计划，输出最终 `RobotActionPlan`。
+- 最小运行时：支持单步、固定次数、dry-run、mock/simulator 模式；`real_robot` 默认禁止。
+- 单元测试：覆盖状态查询、命令别名、急停、心跳、通信超时、Mock 协议、摄像头 Mock、检测 Mock、人脸身份 Mock、传感器安全层、追踪状态机、助手策略、高级功能安全边界、Arbiter 和 Runtime。
 
 ## 支持的命令
 
@@ -55,6 +57,8 @@
 `follow_owner`、`stop_following` 等未来高级行为暂不直接下发到固件，避免把未知命令写入机器人状态。
 
 机器人 HTTP 客户端会绕过系统代理直连目标地址，避免本地 Mock 或局域网机器人请求被代理服务改写。
+
+固件和 Mock 服务器会拒绝未知命令、空命令、缺失命令和非法 JSON。客户端白名单只是前置保护，不能替代固件本地验证。
 
 ## 运行测试
 
@@ -153,7 +157,25 @@ powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" face-id-smoke --confide
 - 默认 `allow_following=false`，只输出 `tracking` 状态，不发送运动命令。
 - 距离、电池、防跌落、碰撞和 IMU 姿态由 `SafetyMonitor` 统一评估。
 - 普通障碍物和低电量输出 `stop`，防跌落、碰撞和过大倾角输出 `emergency_stop`。
+- 距离未知时不前进；距离过近时输出 `stop`，本轮不自动后退。
+- 已跟随目标丢失或身份丢失时输出 `stop`，防止旧连续运动延续。
 - 即使允许跟随，也只输出 `walk_forward`、`turn_left`、`turn_right` 等高级命令，不直接控制舵机。
+
+## 统一 Arbiter 和 Runtime
+
+`BehaviorArbiter` 是唯一的最终计划仲裁入口。它消费机器人状态、安全评估、追踪决策、高级行为决策和助手计划，输出：
+
+- `command`
+- `face`
+- `speech`
+- `source`
+- `reason`
+- `requires_user_confirmation`
+- `blocked_actions`
+
+优先级以安全为先：急停激活、跌落/碰撞/悬崖/严重倾斜、通信超时、低电量和障碍物都会覆盖追踪、助手和高级行为。未知命令会在进入 `RobotClient` 前被拒绝。
+
+`RobotRuntime` 当前是最小软件运行时，只用于 mock/simulator 和 dry-run 集成；真实机器人模式默认被阻断，必须等待用户明确确认。软件急停只是软件锁存保护，不等于物理断电急停。
 
 ## Mock 语音与大模型助手
 
