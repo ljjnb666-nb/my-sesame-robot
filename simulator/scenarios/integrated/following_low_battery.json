@@ -1,0 +1,25 @@
+{
+  "name": "following_low_battery",
+  "config": {
+    "allowFollowing": true
+  },
+  "steps": [
+    {
+      "name": "low battery stops following",
+      "identityConfirmed": true,
+      "target": {
+        "visible": true,
+        "centerX": 0.5,
+        "distanceM": 1.6
+      },
+      "sensor": {
+        "batteryPercent": 10
+      },
+      "expect": {
+        "command": "stop",
+        "source": "safety",
+        "trackingCommand": "stop"
+      }
+    }
+  ]
+}

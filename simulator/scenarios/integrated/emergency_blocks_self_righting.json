@@ -1,0 +1,25 @@
+{
+  "name": "emergency_blocks_self_righting",
+  "config": {
+    "allowSelfRighting": true
+  },
+  "steps": [
+    {
+      "name": "active emergency stop blocks stand",
+      "robotStatus": {
+        "emergencyStopActive": true
+      },
+      "sensor": {
+        "imuRollDeg": 72
+      },
+      "posture": "fallen",
+      "expect": {
+        "command": null,
+        "source": "safety"
+      },
+      "expectBlockedActions": [
+        "stand"
+      ]
+    }
+  ]
+}

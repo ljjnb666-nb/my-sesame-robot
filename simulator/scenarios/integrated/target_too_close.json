@@ -1,0 +1,21 @@
+{
+  "name": "target_too_close",
+  "config": {
+    "allowFollowing": true
+  },
+  "steps": [
+    {
+      "name": "target too close stops without backward command",
+      "identityConfirmed": true,
+      "target": {
+        "visible": true,
+        "centerX": 0.5,
+        "distanceM": 0.4
+      },
+      "expect": {
+        "command": "stop",
+        "trackingState": "stopped"
+      }
+    }
+  ]
+}

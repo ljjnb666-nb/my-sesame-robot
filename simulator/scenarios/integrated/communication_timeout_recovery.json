@@ -1,0 +1,54 @@
+{
+  "name": "communication_timeout_recovery",
+  "config": {
+    "allowFollowing": true
+  },
+  "steps": [
+    {
+      "name": "first frame follows owner",
+      "identityConfirmed": true,
+      "target": {
+        "visible": true,
+        "centerX": 0.5,
+        "distanceM": 1.6
+      },
+      "expect": {
+        "command": "walk_forward",
+        "trackingState": "following"
+      }
+    },
+    {
+      "name": "timeout stops motion",
+      "robotStatus": {
+        "communicationTimedOut": true
+      },
+      "identityConfirmed": true,
+      "target": {
+        "visible": true,
+        "centerX": 0.5,
+        "distanceM": 1.6
+      },
+      "expect": {
+        "command": "stop",
+        "source": "safety"
+      },
+      "expectBlockedActions": [
+        "stop"
+      ]
+    },
+    {
+      "name": "recovery does not restore old motion",
+      "robotStatus": {
+        "communicationTimedOut": false
+      },
+      "identityConfirmed": false,
+      "target": {
+        "visible": false
+      },
+      "expect": {
+        "command": "stop",
+        "trackingState": "target_lost"
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "assistant_motion_blocked_by_obstacle",
+  "steps": [
+    {
+      "name": "obstacle blocks assistant movement",
+      "assistant": {
+        "commands": [
+          "walk_forward"
+        ]
+      },
+      "sensor": {
+        "frontDistanceM": 0.2
+      },
+      "expect": {
+        "command": "stop",
+        "source": "safety"
+      },
+      "expectBlockedActions": [
+        "walk_forward"
+      ]
+    }
+  ]
+}

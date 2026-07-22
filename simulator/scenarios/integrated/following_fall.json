@@ -1,0 +1,26 @@
+{
+  "name": "following_fall",
+  "config": {
+    "allowFollowing": true
+  },
+  "steps": [
+    {
+      "name": "fall overrides following",
+      "identityConfirmed": true,
+      "target": {
+        "visible": true,
+        "centerX": 0.5,
+        "distanceM": 1.6
+      },
+      "sensor": {
+        "imuRollDeg": 72
+      },
+      "expect": {
+        "command": "emergency_stop",
+        "source": "safety",
+        "requiresUserConfirmation": false,
+        "trackingCommand": "emergency_stop"
+      }
+    }
+  ]
+}
