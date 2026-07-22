@@ -81,6 +81,21 @@ Use **[Sesame Studio](software/sesame-studio/README.md)** to visually design pos
 
 ## Software & Firmware
 
+### AI Runtime, Mock, and Simulator Status
+
+This fork is adding a software-only AI controller and virtual hardware validation path. Current automated checks cover Runtime behavior, Confirmation lifecycle, mock robot protocol, simulator scenarios, virtual hardware fault injection, and firmware compilation. These are software simulation results only.
+
+Real hardware remains unverified until parts are purchased and tested in stages. The following are not validated by software-only CI: firmware upload to an ESP32, ESP32 boot on a physical board, serial communication to real hardware, servo direction and limits, motor direction and power, camera compatibility, microphone compatibility, battery and charging behavior, self-righting, walking, charging dock contact, and the full AI-to-real-hardware chain.
+
+Relevant planning documents:
+
+- [Hardware validation plan](docs/hardware-validation-plan.md)
+- [Hardware interface contract](docs/hardware-interface-contract.md)
+- [Hardware BOM draft](docs/hardware-bom-draft.md)
+- [Wiring and power checklist](docs/wiring-and-power-checklist.md)
+- [Simulation capability matrix](docs/simulation-capability-matrix.md)
+- [Simulator README](simulator/README.md)
+
 ### Sesame Studio
 Sesame Studio is a standalone desktop application included in `software/sesame-studio/`. It allows you to:
 *   Visually pose the robot using a schematic interface.

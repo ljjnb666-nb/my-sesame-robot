@@ -1,0 +1,94 @@
+{
+  "name": "sensor-faults",
+  "clockStart": 30.0,
+  "steps": [
+    {
+      "name": "battery missing fails closed for motor output",
+      "injectFault": "battery_sensor_missing",
+      "setMotor": {
+        "motorId": 0,
+        "power": 0.2,
+        "duration": 0.1
+      },
+      "expectError": "battery data is missing",
+      "expect": {
+        "state.motors.0.direction": "stop"
+      }
+    },
+    {
+      "name": "low battery blocks motor output",
+      "clearFault": "all",
+      "injectFault": "battery_low",
+      "setMotor": {
+        "motorId": 0,
+        "power": 0.2,
+        "duration": 0.1
+      },
+      "expectError": "battery is too low",
+      "expect": {
+        "state.motors.0.direction": "stop"
+      }
+    },
+    {
+      "name": "invalid pose fails closed",
+      "clearFault": "all",
+      "injectFault": "pose_sensor_invalid",
+      "setServo": {
+        "servoId": 0,
+        "angle": 95
+      },
+      "expectError": "pose data is invalid",
+      "expect": {
+        "state.servos.0.currentAngle": 90.0
+      }
+    },
+    {
+      "name": "camera timeout reports explicit error",
+      "clearFault": "all",
+      "injectFault": "camera_timeout",
+      "captureCameraFrame": true,
+      "expectError": "camera timeout"
+    },
+    {
+      "name": "microphone unavailable reports explicit error",
+      "clearFault": "all",
+      "injectFault": "microphone_unavailable",
+      "captureAudio": {
+        "duration": 0.1
+      },
+      "expectError": "microphone unavailable"
+    },
+    {
+      "name": "charging contact failure is surfaced",
+      "clearFault": "all",
+      "injectFault": "charging_contact_failed",
+      "readChargingState": true,
+      "expect": {
+        "state.chargingState": "contact_failed"
+      }
+    },
+    {
+      "name": "communication loss stops actuators",
+      "clearFault": "all",
+      "setMotor": {
+        "motorId": 0,
+        "power": 0.2,
+        "duration": 1.0
+      }
+    },
+    {
+      "name": "communication lost rejects next actuator command",
+      "injectFault": "communication_lost",
+      "setServo": {
+        "servoId": 0,
+        "angle": 100
+      },
+      "expectError": "communication is not connected",
+      "expect": {
+        "state.motors.0.direction": "stop",
+        "state.emergencyStop": true
+      }
+    }
+  ],
+  "expectSafeAtEnd": true
+}

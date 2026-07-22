@@ -202,3 +202,36 @@ powershell -ExecutionPolicy Bypass -File ".\run-vision-replay.ps1" --source came
 - Scenario JSON no longer constructs `ConfirmationGrant`.
 - Runtime-flow scenarios cover request, valid submit, replay, expired ID, wrong action, changed context, fake ID, emergency reset without motion resume, self-righting hardware block, and charging hardware block.
 - `runtimeFlow: true` scenarios use `submitConfirmation: "last"` to submit the actual ID returned by the previous request step.
+
+## 2026-07-22 Virtual Hardware Scenario Update
+
+The virtual hardware layer lives in `ai-controller/sesame_ai_robot/virtual_hardware.py`. It defines the shared `RobotHardware` contract plus mock/simulator adapters and a real hardware adapter stub that does not open devices during import or initialization.
+
+Run virtual hardware scenarios:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-hardware-scenarios.ps1"
+```
+
+Current virtual hardware scenarios:
+
+- `scenarios/hardware/servo_safety.json`
+- `scenarios/hardware/motor_safety.json`
+- `scenarios/hardware/sensor_faults.json`
+
+The scenarios validate software simulation only:
+
+- Servo range, invalid id, offline, stuck, overheated, and emergency stop behavior.
+- Motor power limit, duration limit, stall, overcurrent, auto-stop, and emergency stop behavior.
+- Battery, pose, camera, microphone, charging-contact, and communication-loss faults.
+- Failed dispatches keep actuator state unchanged unless the safety policy intentionally enters emergency stop.
+
+CLI inspection commands are available through the AI controller and default to simulator-only state:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "..\ai-controller\run-cli.ps1" simulator-state
+powershell -ExecutionPolicy Bypass -File "..\ai-controller\run-cli.ps1" simulator-inject-fault battery_low
+powershell -ExecutionPolicy Bypass -File "..\ai-controller\run-cli.ps1" simulator-timeline
+```
+
+These commands do not open serial ports, cameras, microphones, GPIO, or actuator devices.

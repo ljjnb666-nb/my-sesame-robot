@@ -101,7 +101,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -ExecutionPolicy Bypass -File .\simulator\run-integrated-scenarios.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          "## Simulator scenarios`n`n- Normal: PASS`n- Advanced: PASS`n- Integrated: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          powershell -ExecutionPolicy Bypass -File .\simulator\run-hardware-scenarios.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "## Simulator scenarios`n`n- Normal: PASS`n- Advanced: PASS`n- Integrated: PASS`n- Virtual hardware: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Python syntax validation
         run: |

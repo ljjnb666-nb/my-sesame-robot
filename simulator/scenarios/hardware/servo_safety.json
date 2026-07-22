@@ -1,0 +1,104 @@
+{
+  "name": "servo-safety",
+  "clockStart": 10.0,
+  "initialState": {
+    "batteryPercent": 80,
+    "hardwareEnabled": true,
+    "pose": {
+      "state": "standing",
+      "rollDeg": 0.0,
+      "pitchDeg": 0.0
+    }
+  },
+  "steps": [
+    {
+      "name": "normal small angle motion",
+      "setServo": {
+        "servoId": 0,
+        "angle": 100,
+        "speed": 100
+      },
+      "expect": {
+        "state.servos.0.currentAngle": 100.0,
+        "state.servos.0.targetAngle": 100.0
+      }
+    },
+    {
+      "name": "angle outside mechanical limit is rejected",
+      "setServo": {
+        "servoId": 0,
+        "angle": 220,
+        "speed": 100
+      },
+      "expectError": "outside safe limits",
+      "expect": {
+        "state.servos.0.currentAngle": 100.0
+      }
+    },
+    {
+      "name": "invalid servo id is rejected",
+      "setServo": {
+        "servoId": 99,
+        "angle": 90
+      },
+      "expectError": "unknown servo id",
+      "expect": {
+        "state.servos.0.currentAngle": 100.0
+      }
+    },
+    {
+      "name": "offline servo is rejected",
+      "injectFault": "servo_offline",
+      "setServo": {
+        "servoId": 0,
+        "angle": 90
+      },
+      "expectError": "offline",
+      "expect": {
+        "state.servos.0.currentAngle": 100.0
+      }
+    },
+    {
+      "name": "clear servo fault",
+      "clearFault": "all",
+      "expect": {
+        "state.servos.0.offline": false
+      }
+    },
+    {
+      "name": "stuck servo is rejected",
+      "injectFault": "servo_stuck",
+      "setServo": {
+        "servoId": 0,
+        "angle": 95
+      },
+      "expectError": "stuck",
+      "expect": {
+        "state.servos.0.currentAngle": 100.0
+      }
+    },
+    {
+      "name": "overheated servo is rejected",
+      "clearFault": "all",
+      "injectFault": "servo_overheated",
+      "setServo": {
+        "servoId": 0,
+        "angle": 95
+      },
+      "expectError": "overheated",
+      "expect": {
+        "state.servos.0.currentAngle": 100.0
+      }
+    },
+    {
+      "name": "emergency stop leaves servo target at current angle",
+      "clearFault": "all",
+      "stopAllActuators": true,
+      "expect": {
+        "state.emergencyStop": true,
+        "state.servos.0.targetAngle": 100.0
+      }
+    }
+  ],
+  "expectSafeAtEnd": true
+}
