@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
+from pathlib import Path
+import sys
 
 from .client import RobotClient
 from .config import ControllerConfig
@@ -15,6 +18,7 @@ from .advanced import RuntimeMode
 from .confirmation import ConfirmationStore
 from .runtime import RobotRuntime, RobotRuntimeConfig, result_to_jsonable as runtime_result_to_jsonable
 from .tracking import TrackingDecision, TrackingState
+from .virtual_hardware import HardwareDispatchError, HardwareSafetyError, ManualClock, SimulatorHardwareAdapter
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -73,6 +77,23 @@ def build_parser() -> argparse.ArgumentParser:
         runtime_parser.add_argument("--battery-percent", type=int, default=100)
         runtime_parser.add_argument("--cliff-detected", action="store_true")
         runtime_parser.add_argument("--collision-detected", action="store_true")
+
+    simulator_state = subparsers.add_parser("simulator-state", help="Print virtual hardware state as JSON")
+    simulator_state.add_argument("--fault", action="append", default=[])
+    simulator_state.add_argument("--dry-run", action="store_true")
+
+    simulator_fault = subparsers.add_parser("simulator-inject-fault", help="Inject a virtual hardware fault and print state")
+    simulator_fault.add_argument("fault")
+    simulator_fault.add_argument("--dry-run", action="store_true")
+
+    simulator_reset = subparsers.add_parser("simulator-reset", help="Reset virtual hardware state")
+    simulator_reset.add_argument("--dry-run", action="store_true")
+
+    simulator_timeline = subparsers.add_parser("simulator-timeline", help="Run a small virtual hardware timeline")
+    simulator_timeline.add_argument("--dry-run", action="store_true")
+
+    simulator_run = subparsers.add_parser("simulator-run-scenario", help="Run virtual hardware simulator scenarios")
+    simulator_run.add_argument("paths", nargs="*")
     return parser
 
 
@@ -129,6 +150,52 @@ def main() -> int:
     if args.command == "assistant-smoke":
         pipeline = MockAssistantPipeline(policy=AssistantPolicy(allow_motion_commands=args.allow_motion))
         print(json.dumps(plan_to_jsonable(pipeline.handle_text(args.text)), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "simulator-run-scenario":
+        repo = Path(__file__).resolve().parents[2]
+        runner_path = repo / "simulator" / "hardware_scenario_runner.py"
+        spec = importlib.util.spec_from_file_location("sesame_hardware_scenario_runner", runner_path)
+        if spec is None or spec.loader is None:
+            print(json.dumps({"error": "hardware scenario runner is unavailable"}, ensure_ascii=False, indent=2))
+            return 1
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        scenario_paths = [Path(path) for path in args.paths] if args.paths else [repo / "simulator" / "scenarios" / "hardware"]
+        results = [module.run_hardware_scenario(path) for path in module.discover_scenarios(scenario_paths)]
+        print(json.dumps({
+            "results": [
+                {"path": str(result.path), "passed": result.passed, "failures": list(result.failures)}
+                for result in results
+            ]
+        }, ensure_ascii=False, indent=2))
+        return 0 if all(result.passed for result in results) else 1
+
+    if args.command in {"simulator-state", "simulator-inject-fault", "simulator-reset", "simulator-timeline"}:
+        clock = ManualClock(100.0)
+        hardware = SimulatorHardwareAdapter(clock=clock)
+        try:
+            if args.command == "simulator-state":
+                for fault in args.fault:
+                    hardware.inject_fault(fault)
+                payload = {"dryRun": bool(args.dry_run), "state": hardware.state.snapshot(), "events": hardware.events}
+            elif args.command == "simulator-inject-fault":
+                hardware.inject_fault(args.fault)
+                payload = {"dryRun": bool(args.dry_run), "state": hardware.state.snapshot(), "events": hardware.events}
+            elif args.command == "simulator-reset":
+                payload = {"dryRun": bool(args.dry_run), "state": hardware.state.snapshot(), "events": hardware.events}
+            else:
+                if not args.dry_run:
+                    hardware.set_servo(0, 100, 100)
+                    hardware.set_motor(0, 0.25, 0.5)
+                    clock.advance(0.5)
+                    hardware.tick()
+                payload = {"dryRun": bool(args.dry_run), "state": hardware.state.snapshot(), "events": hardware.events}
+        except (ValueError, HardwareDispatchError, HardwareSafetyError) as exc:
+            print(json.dumps({"error": str(exc)}, ensure_ascii=False, indent=2))
+            return 1
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
 
     if args.command in {"runtime-step", "runtime-run", "runtime-confirmation-demo"}:

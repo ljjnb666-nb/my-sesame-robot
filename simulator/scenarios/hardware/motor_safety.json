@@ -1,0 +1,108 @@
+{
+  "name": "motor-safety",
+  "clockStart": 20.0,
+  "steps": [
+    {
+      "name": "normal low power run",
+      "setMotor": {
+        "motorId": 0,
+        "power": 0.25,
+        "duration": 0.5
+      },
+      "expect": {
+        "state.motors.0.direction": "forward",
+        "state.motors.0.currentOutput": 0.25
+      }
+    },
+    {
+      "name": "auto stop at deadline",
+      "advanceSeconds": 0.5,
+      "expect": {
+        "state.motors.0.direction": "stop",
+        "state.motors.0.currentOutput": 0.0
+      }
+    },
+    {
+      "name": "power limit rejected",
+      "setMotor": {
+        "motorId": 0,
+        "power": 1.5,
+        "duration": 0.2
+      },
+      "expectError": "outside safe limits",
+      "expect": {
+        "state.motors.0.direction": "stop"
+      }
+    },
+    {
+      "name": "negative duration rejected",
+      "setMotor": {
+        "motorId": 0,
+        "power": 0.2,
+        "duration": -1
+      },
+      "expectError": "non-negative",
+      "expect": {
+        "state.motors.0.direction": "stop"
+      }
+    },
+    {
+      "name": "long duration rejected",
+      "setMotor": {
+        "motorId": 0,
+        "power": 0.2,
+        "duration": 9
+      },
+      "expectError": "duration exceeds",
+      "expect": {
+        "state.motors.0.direction": "stop"
+      }
+    },
+    {
+      "name": "stalled motor rejected",
+      "injectFault": "motor_stall",
+      "setMotor": {
+        "motorId": 0,
+        "power": 0.2,
+        "duration": 0.1
+      },
+      "expectError": "stalled",
+      "expect": {
+        "state.motors.0.direction": "stop"
+      }
+    },
+    {
+      "name": "overcurrent motor rejected",
+      "clearFault": "all",
+      "injectFault": "motor_overcurrent",
+      "setMotor": {
+        "motorId": 0,
+        "power": 0.2,
+        "duration": 0.1
+      },
+      "expectError": "overcurrent",
+      "expect": {
+        "state.motors.0.direction": "stop"
+      }
+    },
+    {
+      "name": "emergency stop zeros motor",
+      "clearFault": "all",
+      "setMotor": {
+        "motorId": 0,
+        "power": -0.2,
+        "duration": 1
+      }
+    },
+    {
+      "name": "stop all actuators",
+      "stopAllActuators": true,
+      "expect": {
+        "state.motors.0.direction": "stop",
+        "state.motors.0.currentOutput": 0.0,
+        "state.emergencyStop": true
+      }
+    }
+  ],
+  "expectSafeAtEnd": true
+}
