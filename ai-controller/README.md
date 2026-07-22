@@ -243,9 +243,14 @@ powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" runtime-run --mode simu
 - Runtime atomically consumes the ID before execution. Replay returns `already_used`.
 - `user_confirmed_actions` and public `confirmation_grants` inputs were removed from Runtime and Arbiter.
 - Confirmation failure states are exposed in Runtime JSON output and logs.
+- Confirmation TTL uses monotonic time; zero, negative, and greater-than-300-second TTL values are rejected.
+- Runtime logs store confirmation ID fingerprints rather than complete confirmation IDs.
+- Runtime JSON returns a short context fingerprint instead of the full internal context token.
 
 Single-process CLI demo:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" runtime-confirmation-demo --mode mock --dry-run
 ```
+
+The demo exercises request, valid consume, replay rejection, wrong action rejection, context-changed rejection, and expired rejection through the real Runtime API.

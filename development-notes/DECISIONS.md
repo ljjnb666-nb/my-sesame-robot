@@ -136,12 +136,18 @@ Decision:
 - `BehaviorArbiter` may report that an action requires confirmation, but it does not create a store, persist a request, or accept public grants.
 - Callers submit only `confirmation_id`; Runtime computes the current context and calls `ConfirmationStore.consume()` to validate and consume in one operation.
 - `user_confirmed_actions` and externally supplied `ConfirmationGrant` inputs are removed.
+- `ConfirmationStore.consume()` uses an internal lock and marks an accepted confirmation as used before Runtime dispatches the selected command.
+- Confirmation TTL uses monotonic time, rejects zero or negative values, rejects values above 300 seconds, and expires when `now >= expiresAt`.
+- Runtime logs store confirmation ID fingerprints instead of complete confirmation IDs.
 
 Reason:
 - A temporary store in Arbiter cannot validate a later user confirmation.
 - Action strings and caller-constructed grants can bypass safety.
 - Confirmation validation and consumption must be atomic to prevent replay.
+- Command dispatch failure must not make a previously accepted confirmation reusable.
 
 Impact:
 - Confirmation lifecycle tests now assert `unknown_id`, `expired`, `action_mismatch`, `context_changed`, and `already_used`.
 - Runtime logs record real safety severity and confirmation state.
+- Concurrent consume tests assert that only one caller can accept a confirmation ID.
+- Action parameter changes are represented in the context fingerprint and invalidate the confirmation.

@@ -95,3 +95,9 @@ Software emergency stop is not the same as a physical power-disconnect emergency
 - Confirmation IDs are action-bound, context-bound, expiring, and one-time use.
 - Structured confirmation errors are: `unknown_id`, `expired`, `action_mismatch`, `context_changed`, and `already_used`.
 - `user_confirmed_actions` is no longer an accepted Runtime or Arbiter input and cannot bypass confirmation.
+
+Confirmation TTL uses the process monotonic clock. The default TTL is 60 seconds and stores reject zero, negative, or greater-than-300-second TTL values. A confirmation is expired when submitted at or after its `expiresAt` time.
+
+Confirmation context includes canonical action identity, proposed command, runtime mode, emergency-stop state, safety severity, posture state, communication timeout state, robot motion state, battery percent, hardware availability, and experimental feature enablement. It excludes timestamps, raw sensor dumps, camera frames, microphone audio, personal media, debug logs, and other high-frequency or privacy-sensitive data.
+
+The context fingerprint is SHA-256 over sorted `key=value` context pairs. Runtime JSON exposes the user-submittable `confirmationId` and a short context fingerprint for debugging, not the full internal context token. Runtime logs record only a short confirmation ID fingerprint, the action, lifecycle state, structured error, selected command, and real `safety_severity`.
