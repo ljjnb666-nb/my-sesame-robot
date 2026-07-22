@@ -140,6 +140,17 @@ def _run_runtime_flow_scenario(path: Path, scenario: dict[str, Any]) -> Integrat
         ))
         if bool(config.get("forceSelfRightingPosture", False)):
             advanced_planner = ScenarioSelfRightingPlanner(advanced_planner.config)
+        confirmation_clock = None
+        if "confirmationClockStart" in config:
+            confirmation_clock = {"now": float(config["confirmationClockStart"])}
+        confirmation_store = (
+            ConfirmationStore(
+                float(config.get("confirmationTtlSeconds", 60.0)),
+                _clock=lambda: confirmation_clock["now"],
+            )
+            if confirmation_clock is not None
+            else ConfirmationStore(float(config.get("confirmationTtlSeconds", 60.0)))
+        )
         runtime = RobotRuntime(
             client,
             RobotRuntimeConfig(
@@ -151,11 +162,13 @@ def _run_runtime_flow_scenario(path: Path, scenario: dict[str, Any]) -> Integrat
                 max_tilt_deg=float(config.get("maxSafetyTiltDeg", SafetyConfig().max_tilt_deg)),
             )),
             advanced_planner=advanced_planner,
-            confirmation_store=ConfirmationStore(float(config.get("confirmationTtlSeconds", 60.0))),
+            confirmation_store=confirmation_store,
         )
         tracking = TrackingController(TrackingConfig(allow_following=bool(config.get("allowFollowing", False))))
         for index, step in enumerate(scenario.get("steps", []), start=1):
             label = step.get("name", f"step {index}")
+            if confirmation_clock is not None:
+                confirmation_clock["now"] += float(step.get("advanceConfirmationClockSeconds", 0.0))
             _apply_status(state, step.get("robotStatus", {}))
             _apply_sensor(state, step.get("sensor", {}))
             status = state.as_status()
