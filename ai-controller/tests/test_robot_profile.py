@@ -84,6 +84,20 @@ limits:
             with self.assertRaises(ValueError):
                 load_profile(path)
 
+    def test_forbidden_key_case_variant_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            path = write_profile(tmp, "name: Desk Bot\nSafety_Override: true\n")
+
+            with self.assertRaises(ValueError):
+                load_profile(path)
+
+    def test_forbidden_key_hyphen_variant_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            path = write_profile(tmp, "name: Desk Bot\nruntime-authorized-actions:\n  - walk_forward\n")
+
+            with self.assertRaises(ValueError):
+                load_profile(path)
+
     def test_confirmation_override_field_is_rejected(self):
         with TemporaryDirectory() as tmp:
             path = write_profile(tmp, "name: Desk Bot\nconfirmation_required: false\n")
@@ -105,6 +119,20 @@ limits:
             with self.assertRaises(ValueError):
                 load_profile(path)
 
+    def test_real_robot_gate_field_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            path = write_profile(tmp, "name: Desk Bot\nlimits:\n  allow-real-robot: true\n")
+
+            with self.assertRaises(ValueError):
+                load_profile(path)
+
+    def test_runtime_mode_field_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            path = write_profile(tmp, "name: Desk Bot\nruntime_mode: real_robot\n")
+
+            with self.assertRaises(ValueError):
+                load_profile(path)
+
     def test_capabilities_must_be_a_list_or_string(self):
         with TemporaryDirectory() as tmp:
             path = write_profile(tmp, "name: Desk Bot\ncapabilities:\n  camera: true\n")
@@ -115,6 +143,49 @@ limits:
     def test_limits_must_be_mapping(self):
         with TemporaryDirectory() as tmp:
             path = write_profile(tmp, "name: Desk Bot\nlimits:\n  - bad\n")
+
+            with self.assertRaises(ValueError):
+                load_profile(path)
+
+    def test_duplicate_root_key_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            path = write_profile(tmp, "name: One\nname: Two\n")
+
+            with self.assertRaises(ValueError):
+                load_profile(path)
+
+    def test_duplicate_nested_key_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            path = write_profile(tmp, "name: Desk Bot\npersonality:\n  tone: calm\n  tone: loud\n")
+
+            with self.assertRaises(ValueError):
+                load_profile(path)
+
+    def test_yaml_comments_are_ignored(self):
+        with TemporaryDirectory() as tmp:
+            path = write_profile(tmp, "name: Desk Bot # comment\ncapabilities:\n  - simulator # comment\n")
+
+            profile = load_profile(path)
+
+            self.assertEqual(profile.name, "Desk Bot")
+            self.assertTrue(profile.get_capability("simulator"))
+
+    def test_hash_inside_quoted_string_is_preserved(self):
+        with TemporaryDirectory() as tmp:
+            path = write_profile(tmp, 'name: "Desk # Bot"\n')
+
+            self.assertEqual(load_profile(path).name, "Desk # Bot")
+
+    def test_deep_yaml_structure_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            path = write_profile(tmp, "name: Desk Bot\npersonality:\n  tone:\n    nested: bad\n")
+
+            with self.assertRaises(ValueError):
+                load_profile(path)
+
+    def test_personality_list_is_rejected(self):
+        with TemporaryDirectory() as tmp:
+            path = write_profile(tmp, "name: Desk Bot\npersonality:\n  - calm\n")
 
             with self.assertRaises(ValueError):
                 load_profile(path)
