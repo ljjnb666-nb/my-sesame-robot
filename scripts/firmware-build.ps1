@@ -3,6 +3,12 @@
 
     [string]$ArduinoJsonVersion = "6.21.5",
 
+    [string]$ESP32ServoVersion = "3.0.9",
+
+    [string]$AdafruitSSD1306Version = "2.5.17",
+
+    [string]$AdafruitGFXVersion = "1.12.6",
+
     [ValidateSet("none", "default", "more", "all")]
     [string]$Warnings = "default"
 )
@@ -25,16 +31,35 @@ if (-not (Test-Path $MainSketch)) {
 }
 
 $Libraries = & arduino-cli lib list 2>$null
-if ($LASTEXITCODE -ne 0 -or ($Libraries -notmatch "ArduinoJson")) {
-    Write-Host "安装 ArduinoJson@$ArduinoJsonVersion ..."
-    & arduino-cli lib install "ArduinoJson@$ArduinoJsonVersion"
+if ($LASTEXITCODE -ne 0) {
+    throw "无法读取 Arduino 库列表。"
+}
+
+function Ensure-ArduinoLibrary {
+    param(
+        [string]$Name,
+        [string]$Version,
+        [string]$ListOutput
+    )
+
+    $Pattern = [regex]::Escape($Name) + "\s+" + [regex]::Escape($Version) + "\b"
+    if ($ListOutput -match $Pattern) {
+        Write-Host "已检测到 $Name@$Version"
+        return
+    }
+
+    Write-Host "安装 $Name@$Version ..."
+    & arduino-cli lib install "$Name@$Version"
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "ArduinoJson 依赖安装失败，退出代码：$LASTEXITCODE"
+        Write-Error "$Name@$Version 依赖安装失败，退出代码：$LASTEXITCODE"
         exit $LASTEXITCODE
     }
-} else {
-    Write-Host "已检测到 ArduinoJson 库。要求版本：$ArduinoJsonVersion"
 }
+
+Ensure-ArduinoLibrary -Name "ArduinoJson" -Version $ArduinoJsonVersion -ListOutput $Libraries
+Ensure-ArduinoLibrary -Name "ESP32Servo" -Version $ESP32ServoVersion -ListOutput $Libraries
+Ensure-ArduinoLibrary -Name "Adafruit SSD1306" -Version $AdafruitSSD1306Version -ListOutput $Libraries
+Ensure-ArduinoLibrary -Name "Adafruit GFX Library" -Version $AdafruitGFXVersion -ListOutput $Libraries
 
 # Arduino 要求主 ino 文件名和 sketch 文件夹名一致
 $BuildRoot = Join-Path $RepoRoot ".build"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import socket
 import threading
 import time
 from typing import Any
@@ -158,13 +159,14 @@ class MockRobotState:
 class MockRobotServer:
     def __init__(self, host: str = "127.0.0.1", port: int = 8765, state: MockRobotState | None = None):
         self.state = state or MockRobotState()
-        self._server = ThreadingHTTPServer((host, port), self._make_handler())
+        self._server = _MockThreadingHTTPServer((host, port), self._make_handler())
         self.url = f"http://{self._server.server_address[0]}:{self._server.server_address[1]}"
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._server.serve_forever, name="sesame-mock-robot", daemon=True)
         self._thread.start()
+        self._wait_until_ready()
 
     def stop(self) -> None:
         self._server.shutdown()
@@ -174,6 +176,19 @@ class MockRobotServer:
 
     def serve_forever(self) -> None:
         self._server.serve_forever()
+
+    def _wait_until_ready(self) -> None:
+        host, port = self._server.server_address
+        deadline = time.monotonic() + 2.0
+        last_error: OSError | None = None
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection((host, port), timeout=0.1):
+                    return
+            except OSError as exc:
+                last_error = exc
+                time.sleep(0.01)
+        raise RuntimeError(f"mock robot server did not start: {last_error}") from last_error
 
     def _make_handler(self) -> type[BaseHTTPRequestHandler]:
         state = self.state
@@ -218,10 +233,18 @@ class MockRobotServer:
 
             def _send_json(self, payload: dict[str, Any], status_code: int = 200) -> None:
                 body = json.dumps(payload).encode("utf-8")
-                self.send_response(status_code)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+                try:
+                    self.send_response(status_code)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                    return
 
         return Handler
+
+
+class _MockThreadingHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True

@@ -2,6 +2,8 @@
 
 # Arduino CLI build output
 .build/
+artifacts/
+artifacts-gh*/
 
 # Python local outputs
 __pycache__/
