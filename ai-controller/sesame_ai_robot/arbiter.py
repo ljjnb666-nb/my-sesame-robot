@@ -56,8 +56,17 @@ class ArbiterInput:
 class BehaviorArbiter:
     ALWAYS_ALLOWED = {"stop", "emergency_stop", "reset_emergency_stop", "heartbeat"}
     EXPRESSIVE_COMMANDS = {"wave"}
-    MOTION_COMMANDS = {"walk_forward", "walk_backward", "turn_left", "turn_right"}
-    CONFIRMATION_ACTIONS = {"reset_emergency_stop", "self_righting", "charging_dock"}
+    MOTION_COMMANDS = {"walk_forward", "walk_backward", "turn_left", "turn_right", "stand", "rest"}
+    CONFIRMATION_ACTIONS = {
+        "reset_emergency_stop",
+        "self_righting",
+        "charging_dock",
+        "walk_forward",
+        "walk_backward",
+        "turn_left",
+        "turn_right",
+        "stand",
+    }
 
     def decide(self, inputs: ArbiterInput) -> RobotActionPlan:
         candidates = self._candidate_actions(inputs)
@@ -134,7 +143,7 @@ class BehaviorArbiter:
         if inputs.tracking is not None and inputs.tracking.command:
             return self._validated_command(inputs.tracking.command, "tracking", inputs.tracking.reason, candidates)
 
-        assistant_plan = self._assistant_plan(inputs.assistant, candidates)
+        assistant_plan = self._assistant_plan(inputs, candidates)
         if assistant_plan is not None:
             return assistant_plan
 
@@ -170,7 +179,8 @@ class BehaviorArbiter:
                 return self._validated_command(decision.command, "advanced", decision.reason, self._candidate_actions(inputs))
         return None
 
-    def _assistant_plan(self, assistant: AssistantPlan | None, candidates: tuple[RejectedAction, ...]) -> RobotActionPlan | None:
+    def _assistant_plan(self, inputs: ArbiterInput, candidates: tuple[RejectedAction, ...]) -> RobotActionPlan | None:
+        assistant = inputs.assistant
         if assistant is None:
             return None
         for step in assistant.steps:
@@ -179,6 +189,25 @@ class BehaviorArbiter:
             if step.value in self.ALWAYS_ALLOWED:
                 continue
             if step.value in self.MOTION_COMMANDS:
+                if (
+                    step.reason == "AI structured intent"
+                    and step.value in self.CONFIRMATION_ACTIONS
+                    and not self._has_confirmation(inputs, step.value)
+                ):
+                    context = self._confirmation_context(inputs, step.value, step.value, "")
+                    return RobotActionPlan(
+                        None,
+                        None,
+                        None,
+                        "assistant",
+                        f"{step.value} requires user confirmation",
+                        requires_user_confirmation=True,
+                        confirmation_requirement=ConfirmationRequirement(
+                            step.value,
+                            f"{step.value} requires user confirmation",
+                            context,
+                        ),
+                    )
                 return self._validated_command(step.value, "assistant", step.reason, candidates)
             if step.value in self.EXPRESSIVE_COMMANDS:
                 return self._validated_command(step.value, "assistant", step.reason, candidates)

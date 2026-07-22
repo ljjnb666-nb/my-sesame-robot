@@ -94,7 +94,21 @@ Relevant planning documents:
 - [Hardware BOM draft](docs/hardware-bom-draft.md)
 - [Wiring and power checklist](docs/wiring-and-power-checklist.md)
 - [Simulation capability matrix](docs/simulation-capability-matrix.md)
+- [AI interaction architecture](docs/ai-interaction-architecture.md)
+- [AI provider configuration](docs/ai-provider-configuration.md)
+- [AI safety boundary](docs/ai-safety-boundary.md)
+- [AI evaluation](docs/ai-evaluation.md)
 - [Simulator README](simulator/README.md)
+
+AI interaction V0 adds a simulator-only natural-language loop:
+
+```powershell
+cd ai-controller
+powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-command --text "查看机器人当前电量" --json
+powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-eval --json
+```
+
+The default AI provider is `mock`, and the default runtime mode is `simulator`. Optional OpenAI-compatible provider support is configured only through environment variables and is not used by CI.
 
 ### Sesame Studio
 Sesame Studio is a standalone desktop application included in `software/sesame-studio/`. It allows you to:

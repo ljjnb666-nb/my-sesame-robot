@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PYTHONIOENCODING: "utf-8"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -26,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -37,7 +41,7 @@ jobs:
           New-Item -ItemType Directory -Path artifacts -Force | Out-Null
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -93,6 +97,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "## Runtime CLI dry-runs`n`n- runtime-step: PASS`n- runtime-run: PASS`n- runtime-confirmation-demo: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
+      - name: AI interaction evals
+        working-directory: ai-controller
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-command --provider mock --mode simulator --text "battery status" --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-command --provider mock --mode simulator --text "walk forward" --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-eval --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "## AI interaction evals`n`n- ai-command query: PASS`n- ai-command confirmation request: PASS`n- ai-eval: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
       - name: Simulator scenarios
         run: |
           powershell -ExecutionPolicy Bypass -File .\simulator\run-scenarios.ps1
@@ -114,12 +129,26 @@ jobs:
           "## Python syntax validation`n`n- Result: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Set up Arduino CLI
-        uses: arduino/setup-arduino-cli@v2
-        with:
-          version: "1.5.1"
+        run: |
+          $ArduinoCliVersion = "1.5.1"
+          $Archive = Join-Path $env:RUNNER_TEMP "arduino-cli.zip"
+          $InstallDir = Join-Path $env:RUNNER_TEMP "arduino-cli"
+          New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+          Invoke-WebRequest `
+            -Uri "https://downloads.arduino.cc/arduino-cli/arduino-cli_${ArduinoCliVersion}_Windows_64bit.zip" `
+            -OutFile $Archive
+          Expand-Archive -Path $Archive -DestinationPath $InstallDir -Force
+          $CliPath = Get-ChildItem -Path $InstallDir -Recurse -Filter arduino-cli.exe | Select-Object -First 1
+          if (-not $CliPath) {
+            Write-Error "arduino-cli.exe was not found after extraction"
+            exit 1
+          }
+          $CliDir = Split-Path -Parent $CliPath.FullName
+          "$CliDir" | Out-File -FilePath $env:GITHUB_PATH -Append
+          & $CliPath.FullName version
 
       - name: Cache Arduino packages and libraries
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~\AppData\Local\Arduino15
@@ -159,7 +188,7 @@ jobs:
           }
 
       - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sesame-firmware-${{ env.SHORT_SHA }}-ci
           path: |
