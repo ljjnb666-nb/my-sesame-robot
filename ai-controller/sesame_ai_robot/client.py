@@ -64,6 +64,7 @@ class RobotClient:
     def __init__(self, config: ControllerConfig):
         self.config = config
         self.base_url = config.robot_url.rstrip("/")
+        self._opener = request.build_opener(request.ProxyHandler({}))
 
     def get_status(self) -> RobotStatus:
         return RobotStatus(self._request_json("GET", "/api/status"))
@@ -119,7 +120,7 @@ class RobotClient:
         )
 
         try:
-            with request.urlopen(http_request, timeout=self.config.request_timeout_s) as response:
+            with self._opener.open(http_request, timeout=self.config.request_timeout_s) as response:
                 body = response.read().decode("utf-8")
                 return json.loads(body)
         except error.HTTPError as exc:

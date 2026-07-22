@@ -10,8 +10,8 @@
 
 ## 最新提交
 
-- `1851ad3 feat: add local face identity mock`
-- 当前待提交阶段：`feat: add mock voice assistant pipeline`
+- `8bb4e21 feat: add mock voice assistant pipeline`
+- 当前待提交阶段：`docs: add onboard ai evaluation`
 
 ## 已完成能力
 
@@ -87,6 +87,11 @@
   - 本地 Mock 唤醒词、Mock 语音识别、Mock 语言模型、Mock TTS 和命令权限策略。
   - 不调用真实麦克风、不录音、不访问云端服务、不需要 API Key。
   - 运动命令默认被拒绝，急停命令始终允许。
+- 已完成板载 AI 主控制器迁移评估准备：
+  - 新增 `development-notes/ONBOARD_AI_EVALUATION.md`。
+  - 记录 Raspberry Pi、CM 系列和其他单板计算机评估方向。
+  - 记录摄像头、麦克风、扬声器、电源和电池需求。
+  - 明确硬件在环测试顺序，当前不采购、不连接真实硬件。
 
 ## 当前开发环境
 
@@ -151,13 +156,13 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 ## 下一项任务
 
-优先任务：阶段 10 板载 AI 主控制器迁移评估准备。
+优先任务：阶段 11 高级功能 Mock 规划。
 
 最小实现方向：
 
-- 在电脑端功能稳定后评估板载计算方案。
-- 先形成候选硬件和接口需求文档，不采购、不连接真实硬件。
-- 继续完善模拟系统和 Mock 测试覆盖。
+- 先规划跌倒检测、自动起身、地面自适应、情绪状态、长期记忆和自动返回充电底座。
+- 只建立 Mock 接口和安全约束，不驱动真实硬件。
+- 优先补充模拟场景，不进入真实运动测试。
 
 ## 尚未完成的真实硬件验证
 
