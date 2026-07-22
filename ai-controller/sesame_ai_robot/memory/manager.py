@@ -189,6 +189,7 @@ class MemoryManager:
         self.storage_path = Path(storage_path) if storage_path is not None else DEFAULT_MEMORY_PATH
         self.short_term = short_term or ShortTermMemory()
         self.long_term = long_term or LongTermMemory()
+        self.last_persistence_error: str | None = None
         self._load()
 
     def store(self, scope: str, key: str, value: Any) -> None:
@@ -244,8 +245,18 @@ class MemoryManager:
             "short_term": self.short_term.to_json(),
             "long_term": self.long_term.to_json(),
         }
-        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-        with NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=self.storage_path.parent, suffix=".tmp") as tmp:
-            json.dump(payload, tmp, ensure_ascii=False, indent=2, sort_keys=True)
-            tmp_path = Path(tmp.name)
-        tmp_path.replace(self.storage_path)
+        tmp_path: Path | None = None
+        try:
+            self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+            with NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=self.storage_path.parent, suffix=".tmp") as tmp:
+                json.dump(payload, tmp, ensure_ascii=False, indent=2, sort_keys=True)
+                tmp_path = Path(tmp.name)
+            tmp_path.replace(self.storage_path)
+            self.last_persistence_error = None
+        except OSError as exc:
+            self.last_persistence_error = str(exc)
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
