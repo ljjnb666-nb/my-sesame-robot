@@ -10,8 +10,8 @@
 
 ## 最新提交
 
-- `8bb4e21 feat: add mock voice assistant pipeline`
-- 当前待提交阶段：`docs: add onboard ai evaluation`
+- `24ca32e docs: add onboard ai evaluation`
+- 当前待提交阶段：`feat: add advanced behavior mock layer`
 
 ## 已完成能力
 
@@ -92,6 +92,11 @@
   - 记录 Raspberry Pi、CM 系列和其他单板计算机评估方向。
   - 记录摄像头、麦克风、扬声器、电源和电池需求。
   - 明确硬件在环测试顺序，当前不采购、不连接真实硬件。
+- 已建立高级功能 Mock 层：
+  - 新增 `AdvancedBehaviorPlanner`。
+  - 支持跌倒检测、自动起身门槛、地形状态、情绪状态、Mock 记忆和回充意图。
+  - `real_robot` 模式下自动起身和自动回充必须等待用户明确确认。
+  - 当前只输出高层命令建议，不执行真实动作序列。
 
 ## 当前开发环境
 
@@ -156,13 +161,13 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 ## 下一项任务
 
-优先任务：阶段 11 高级功能 Mock 规划。
+优先任务：阶段 11 高级功能 Mock 场景测试。
 
 最小实现方向：
 
-- 先规划跌倒检测、自动起身、地面自适应、情绪状态、长期记忆和自动返回充电底座。
-- 只建立 Mock 接口和安全约束，不驱动真实硬件。
-- 优先补充模拟场景，不进入真实运动测试。
+- 为跌倒、倾斜、低电量回充等待和真实模式确认门槛补充模拟场景。
+- 将高级行为层与现有追踪、安全和助手策略逐步接入。
+- 不进入真实起身、真实回充或地面运动测试。
 
 ## 尚未完成的真实硬件验证
 
