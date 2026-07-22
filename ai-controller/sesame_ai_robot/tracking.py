@@ -58,12 +58,14 @@ class TrackingController:
 
         if not identity.confirmed:
             self.state = TrackingState.SEARCHING if not self._had_target else TrackingState.TARGET_LOST
-            return TrackingDecision(self.state, None, "owner identity is not confirmed")
+            command = "stop" if self._had_target else None
+            return TrackingDecision(self.state, command, "owner identity is not confirmed")
 
         target = detections.best(self.config.target_label)
         if target is None:
             self.state = TrackingState.SEARCHING if not self._had_target else TrackingState.TARGET_LOST
-            return TrackingDecision(self.state, None, "target is not visible")
+            command = "stop" if self._had_target else None
+            return TrackingDecision(self.state, command, "target is not visible")
 
         self._had_target = True
         safety = self.safety_monitor.assess(SensorSnapshot.from_robot_status(robot_status))

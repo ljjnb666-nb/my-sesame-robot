@@ -135,6 +135,24 @@ class TrackingControllerTest(unittest.TestCase):
         self.assertEqual(decision.state, TrackingState.FOLLOWING)
         self.assertEqual(decision.command, "walk_forward")
 
+    def test_lost_identity_after_following_requests_stop(self):
+        controller = TrackingController(TrackingConfig(allow_following=True))
+        frame = MockCameraSource(width=100, height=100).read()
+        result = DetectionResult(
+            source=frame.source,
+            captured_at=frame.captured_at,
+            processed_at=frame.captured_at,
+            frame_width=100,
+            frame_height=100,
+            detections=(Detection("person", 0.9, BoundingBox(45, 20, 10, 30), distance_m=1.5),),
+        )
+        controller.update(result, confirmed_identity(), {"emergencyStopActive": False, "virtualSensors": {"frontDistanceM": 1.0}})
+
+        decision = controller.update(result, unconfirmed_identity(), {"emergencyStopActive": False})
+
+        self.assertEqual(decision.state, TrackingState.TARGET_LOST)
+        self.assertEqual(decision.command, "stop")
+
 
 if __name__ == "__main__":
     unittest.main()
