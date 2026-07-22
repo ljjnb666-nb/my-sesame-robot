@@ -33,6 +33,7 @@ from .ai_models import (
 from .ai_provider import AIProvider, provider_from_env
 from .assistant import AssistantAction, AssistantPlan, AssistantStep
 from .confirmation import ConfirmationStore
+from .memory import MemoryManager
 from .runtime import RobotRuntime, RobotRuntimeConfig, result_to_jsonable
 from .virtual_hardware import HardwareDispatchError, HardwareSafetyError, SimulatorHardwareAdapter, VirtualHardwareRobotClient
 
@@ -122,6 +123,7 @@ class AIInteractionLoop:
         runtime_mode: RuntimeMode = RuntimeMode.SIMULATOR,
         hardware: SimulatorHardwareAdapter | None = None,
         confirmation_store: ConfirmationStore | None = None,
+        memory_manager: MemoryManager | None = None,
         max_actions: int = MAX_ACTIONS_DEFAULT,
     ) -> None:
         if runtime_mode == RuntimeMode.REAL_ROBOT:
@@ -140,10 +142,12 @@ class AIInteractionLoop:
         )
         self.max_actions = max_actions
         self.memory = ConversationMemory(session_id=f"session_{uuid.uuid4().hex[:12]}")
+        self.memory_manager = memory_manager or MemoryManager()
         self.events: list[dict[str, Any]] = []
 
     def reset_session(self) -> None:
         self.memory.clear()
+        self.memory_manager.clear("short_term")
         self._event("ai_session_reset", None, None, "ok")
 
     def handle_text(self, text: str, confirmation_id: str | None = None) -> RobotReply:
@@ -396,6 +400,7 @@ class AIInteractionLoop:
         if result is not None:
             self.memory.last_execution = result
         self.memory.add(ConversationTurn(request_id, text[:MAX_STRING_CHARS], reply.user_message, reply.result_code))
+        self.memory_manager.record_conversation_turn(request_id, text[:MAX_STRING_CHARS], reply.user_message, reply.result_code)
         self._event("robot_reply_created", request_id, reply.action, reply.result_code, confirmation_fingerprint=reply.confirmation_fingerprint)
         return reply
 
