@@ -12,6 +12,7 @@ from .detection import MockObjectDetector, result_to_jsonable as detection_resul
 from .face_identity import FaceIdentity, MockFaceRecognizer, recognition_to_jsonable
 from .assistant import AssistantAction, AssistantPlan, AssistantPolicy, AssistantStep, MockAssistantPipeline, plan_to_jsonable
 from .advanced import RuntimeMode
+from .confirmation import ConfirmationStore
 from .runtime import RobotRuntime, RobotRuntimeConfig, result_to_jsonable as runtime_result_to_jsonable
 from .tracking import TrackingDecision, TrackingState
 
@@ -167,14 +168,54 @@ def main() -> int:
                 confirmation_id = requested.plan.confirmation_request.confirmation_id
                 accepted = runtime.step(tracking=tracking, assistant=assistant, confirmation_id=confirmation_id)
                 replay = runtime.step(tracking=tracking, assistant=assistant, confirmation_id=confirmation_id)
+                wrong_action_request = runtime.step(tracking=tracking, assistant=assistant)
+                wrong_action = runtime.step(
+                    tracking=tracking,
+                    assistant=assistant,
+                    confirmation_id=wrong_action_request.plan.confirmation_request.confirmation_id,
+                    confirmation_action="self_righting",
+                )
+                context_request = runtime.step(tracking=tracking, assistant=assistant)
+                server.state.virtual_sensors["cliffDetected"] = True
+                context_changed = runtime.step(
+                    tracking=tracking,
+                    assistant=assistant,
+                    confirmation_id=context_request.plan.confirmation_request.confirmation_id,
+                )
+                server.state.virtual_sensors["cliffDetected"] = args.cliff_detected
+
+                demo_clock = {"now": 100.0}
+                expired_runtime = RobotRuntime(
+                    runtime_client,
+                    config,
+                    confirmation_store=ConfirmationStore(ttl_seconds=1.0, _clock=lambda: demo_clock["now"]),
+                )
+                expired_request = expired_runtime.step(tracking=tracking, assistant=assistant)
+                demo_clock["now"] = 101.0
+                expired = expired_runtime.step(
+                    tracking=tracking,
+                    assistant=assistant,
+                    confirmation_id=expired_request.plan.confirmation_request.confirmation_id,
+                )
+                ok = (
+                    requested.confirmation_state == "requested"
+                    and accepted.confirmation_state == "accepted"
+                    and replay.confirmation_state == "already_used"
+                    and wrong_action.confirmation_state == "action_mismatch"
+                    and context_changed.confirmation_state == "context_changed"
+                    and expired.confirmation_state == "expired"
+                )
                 print(json.dumps({
                     "runtimeMode": config.runtime_mode.value,
                     "dryRun": config.dry_run,
                     "request": runtime_result_to_jsonable(requested, config),
                     "confirm": runtime_result_to_jsonable(accepted, config),
                     "replay": runtime_result_to_jsonable(replay, config),
+                    "wrongAction": runtime_result_to_jsonable(wrong_action, config),
+                    "contextChanged": runtime_result_to_jsonable(context_changed, config),
+                    "expired": runtime_result_to_jsonable(expired, config),
                 }, ensure_ascii=False, indent=2))
-                return 0
+                return 0 if ok else 1
             count = 1 if args.command == "runtime-step" else args.steps
             results = tuple(runtime.step(tracking=tracking, assistant=assistant) for _ in range(count))
             payload = runtime_result_to_jsonable(results[-1], config)

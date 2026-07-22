@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 import hashlib
+import threading
 import time
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 
 DEFAULT_CONFIRMATION_TTL_SECONDS = 60.0
+MAX_CONFIRMATION_TTL_SECONDS = 300.0
 
 
 @dataclass(frozen=True)
@@ -80,6 +82,14 @@ class ConfirmationStore:
     ttl_seconds: float = DEFAULT_CONFIRMATION_TTL_SECONDS
     _requests: dict[str, ConfirmationRequest] = field(default_factory=dict)
     _used: set[str] = field(default_factory=set)
+    _clock: Callable[[], float] = time.monotonic
+    _lock: threading.RLock = field(default_factory=threading.RLock)
+
+    def __post_init__(self) -> None:
+        if self.ttl_seconds <= 0:
+            raise ValueError("confirmation ttl_seconds must be greater than zero")
+        if self.ttl_seconds > MAX_CONFIRMATION_TTL_SECONDS:
+            raise ValueError(f"confirmation ttl_seconds must be <= {MAX_CONFIRMATION_TTL_SECONDS}")
 
     def create(
         self,
@@ -88,7 +98,7 @@ class ConfirmationStore:
         context: dict[str, Any] | ConfirmationContext,
         now: float | None = None,
     ) -> ConfirmationRequest:
-        created_at = time.monotonic() if now is None else now
+        created_at = self._clock() if now is None else now
         payload = _context_payload(context)
         request = ConfirmationRequest(
             confirmation_id=uuid.uuid4().hex,
@@ -98,11 +108,13 @@ class ConfirmationStore:
             expires_at=created_at + self.ttl_seconds,
             context_token=context_token(payload),
         )
-        self._requests[request.confirmation_id] = request
+        with self._lock:
+            self._requests[request.confirmation_id] = request
         return request
 
     def get_request(self, confirmation_id: str) -> ConfirmationRequest | None:
-        return self._requests.get(confirmation_id)
+        with self._lock:
+            return self._requests.get(confirmation_id)
 
     def consume(
         self,
@@ -111,20 +123,21 @@ class ConfirmationStore:
         context: dict[str, Any] | ConfirmationContext,
         now: float | None = None,
     ) -> ConfirmationResult:
-        granted_at = time.monotonic() if now is None else now
-        request = self._requests.get(confirmation_id)
-        if request is None:
-            return ConfirmationResult(False, None, ConfirmationErrorCode.UNKNOWN_ID, "confirmation id is unknown")
-        if confirmation_id in self._used:
-            return ConfirmationResult(False, None, ConfirmationErrorCode.ALREADY_USED, "confirmation was already used")
-        if request.action != expected_action:
-            return ConfirmationResult(False, None, ConfirmationErrorCode.ACTION_MISMATCH, "confirmation action does not match")
-        if request.expires_at < granted_at:
-            return ConfirmationResult(False, None, ConfirmationErrorCode.EXPIRED, "confirmation has expired")
+        granted_at = self._clock() if now is None else now
         token = context_token(_context_payload(context))
-        if request.context_token != token:
-            return ConfirmationResult(False, None, ConfirmationErrorCode.CONTEXT_CHANGED, "confirmation context changed")
-        self._used.add(confirmation_id)
+        with self._lock:
+            request = self._requests.get(confirmation_id)
+            if request is None:
+                return ConfirmationResult(False, None, ConfirmationErrorCode.UNKNOWN_ID, "confirmation id is unknown")
+            if confirmation_id in self._used:
+                return ConfirmationResult(False, None, ConfirmationErrorCode.ALREADY_USED, "confirmation was already used")
+            if request.action != expected_action:
+                return ConfirmationResult(False, None, ConfirmationErrorCode.ACTION_MISMATCH, "confirmation action does not match")
+            if granted_at >= request.expires_at:
+                return ConfirmationResult(False, None, ConfirmationErrorCode.EXPIRED, "confirmation has expired")
+            if request.context_token != token:
+                return ConfirmationResult(False, None, ConfirmationErrorCode.CONTEXT_CHANGED, "confirmation context changed")
+            self._used.add(confirmation_id)
         grant = ConfirmationGrant(confirmation_id, request.action, granted_at, token)
         return ConfirmationResult(True, grant, None, "confirmation accepted")
 

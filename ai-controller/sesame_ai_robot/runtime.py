@@ -183,6 +183,13 @@ class RobotRuntime:
 
     def _log(self, result: RuntimeStepResult) -> None:
         status = result.status
+        confirmation_id = (
+            result.plan.confirmation_request.confirmation_id
+            if result.plan.confirmation_request is not None
+            else result.confirmation_result.grant.confirmation_id
+            if result.confirmation_result is not None and result.confirmation_result.grant is not None
+            else None
+        )
         rejected_actions = [
             {"command": action.command, "source": action.source, "reason": action.reason}
             for action in result.plan.rejected_actions
@@ -204,13 +211,7 @@ class RobotRuntime:
             "selected_command": result.plan.command,
             "selected_source": result.plan.source,
             "reason": result.plan.reason,
-            "confirmation_id": (
-                result.plan.confirmation_request.confirmation_id
-                if result.plan.confirmation_request is not None
-                else result.confirmation_result.grant.confirmation_id
-                if result.confirmation_result is not None and result.confirmation_result.grant is not None
-                else None
-            ),
+            "confirmation_id_fingerprint": _fingerprint(confirmation_id),
             "confirmation_action": (
                 result.plan.confirmation_request.action
                 if result.plan.confirmation_request is not None
@@ -244,7 +245,7 @@ def plan_to_jsonable(plan: RobotActionPlan) -> dict[str, Any]:
                 "reason": plan.confirmation_request.reason,
                 "createdAt": plan.confirmation_request.created_at,
                 "expiresAt": plan.confirmation_request.expires_at,
-                "contextToken": plan.confirmation_request.context_token,
+                "contextFingerprint": _fingerprint(plan.confirmation_request.context_token),
             }
             if plan.confirmation_request is not None
             else None
@@ -254,6 +255,12 @@ def plan_to_jsonable(plan: RobotActionPlan) -> dict[str, Any]:
             for action in plan.rejected_actions
         ],
     }
+
+
+def _fingerprint(value: str | None) -> str | None:
+    if not value:
+        return None
+    return value[:12]
 
 
 def result_to_jsonable(result: RuntimeStepResult, config: RobotRuntimeConfig) -> dict[str, Any]:
