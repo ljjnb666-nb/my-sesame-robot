@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -26,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -37,7 +40,7 @@ jobs:
           New-Item -ItemType Directory -Path artifacts -Force | Out-Null
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -92,6 +95,17 @@ jobs:
           powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 runtime-confirmation-demo --mode mock --dry-run
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "## Runtime CLI dry-runs`n`n- runtime-step: PASS`n- runtime-run: PASS`n- runtime-confirmation-demo: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: AI interaction evals
+        working-directory: ai-controller
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-command --provider mock --mode simulator --text "查看机器人当前电量" --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-command --provider mock --mode simulator --text "让机器人向前移动" --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-eval --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "## AI interaction evals`n`n- ai-command query: PASS`n- ai-command confirmation request: PASS`n- ai-eval: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Simulator scenarios
         run: |
