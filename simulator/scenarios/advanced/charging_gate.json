@@ -1,0 +1,22 @@
+{
+  "name": "advanced_charging_gate",
+  "config": {
+    "runtimeMode": "real_robot",
+    "allowAutoDocking": true
+  },
+  "steps": [
+    {
+      "name": "real robot low battery docking waits for user",
+      "action": "plan_charging",
+      "sensor": {
+        "batteryPercent": 10
+      },
+      "expect": {
+        "feature": "charging_dock",
+        "state": "wait_for_user",
+        "command": "stop",
+        "requiresUserConfirmation": true
+      }
+    }
+  ]
+}

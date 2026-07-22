@@ -1,0 +1,18 @@
+{
+  "name": "advanced_fall_detection",
+  "steps": [
+    {
+      "name": "fallen posture triggers emergency stop",
+      "action": "assess_posture",
+      "sensor": {
+        "imuRollDeg": 72
+      },
+      "expect": {
+        "feature": "fall_detection",
+        "state": "fallen",
+        "command": "emergency_stop",
+        "requiresUserConfirmation": false
+      }
+    }
+  ]
+}

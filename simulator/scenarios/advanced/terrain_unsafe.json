@@ -1,0 +1,18 @@
+{
+  "name": "advanced_terrain_unsafe",
+  "steps": [
+    {
+      "name": "cliff sensor keeps terrain unsafe",
+      "action": "assess_terrain",
+      "sensor": {
+        "cliffDetected": true
+      },
+      "expect": {
+        "feature": "terrain_adaptation",
+        "state": "unsafe",
+        "command": "emergency_stop",
+        "requiresUserConfirmation": false
+      }
+    }
+  ]
+}

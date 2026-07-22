@@ -10,8 +10,8 @@
 
 ## 最新提交
 
-- `24ca32e docs: add onboard ai evaluation`
-- 当前待提交阶段：`feat: add advanced behavior mock layer`
+- `9618d22 feat: add advanced behavior mock layer`
+- 当前待提交阶段：`feat: add advanced behavior scenarios`
 
 ## 已完成能力
 
@@ -97,6 +97,11 @@
   - 支持跌倒检测、自动起身门槛、地形状态、情绪状态、Mock 记忆和回充意图。
   - `real_robot` 模式下自动起身和自动回充必须等待用户明确确认。
   - 当前只输出高层命令建议，不执行真实动作序列。
+- 已建立高级功能 Mock 场景测试：
+  - 新增 `simulator/advanced_scenario_runner.py`。
+  - 新增 `run-advanced-scenarios.ps1`。
+  - 覆盖跌倒急停、真实模式自动起身确认门槛、地形危险和真实模式回充确认门槛。
+  - 高级场景直接验证 AI 行为层，不连接真实硬件。
 
 ## 当前开发环境
 
@@ -161,12 +166,12 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 
 ## 下一项任务
 
-优先任务：阶段 11 高级功能 Mock 场景测试。
+优先任务：阶段 11 高级功能与现有控制流程集成。
 
 最小实现方向：
 
-- 为跌倒、倾斜、低电量回充等待和真实模式确认门槛补充模拟场景。
 - 将高级行为层与现有追踪、安全和助手策略逐步接入。
+- 补充组合场景，例如跟随中跌倒、低电量时停止跟随、急停后拒绝自动起身。
 - 不进入真实起身、真实回充或地面运动测试。
 
 ## 尚未完成的真实硬件验证

@@ -59,6 +59,19 @@ powershell -ExecutionPolicy Bypass -File ".\run-scenarios.ps1" ".\scenarios\emer
 - `scenarios/cliff_emergency.json`
 - `scenarios/low_battery.json`
 
+高级行为场景使用独立运行器，不连接 Mock HTTP 服务器，直接验证 AI 高级行为层输出：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-advanced-scenarios.ps1"
+```
+
+当前高级场景：
+
+- `scenarios/advanced/fall_detection.json`
+- `scenarios/advanced/real_self_righting_gate.json`
+- `scenarios/advanced/terrain_unsafe.json`
+- `scenarios/advanced/charging_gate.json`
+
 场景步骤支持：
 
 - `command`：发送机器人命令。
@@ -67,6 +80,14 @@ powershell -ExecutionPolicy Bypass -File ".\run-scenarios.ps1" ".\scenarios\emer
 - `setBatteryPercent`：设置虚拟电量。
 - `waitMs`：等待指定毫秒数。
 - `expect`：断言状态字段，支持 `virtualSensors.frontDistanceM` 这样的点路径。
+
+高级场景步骤支持：
+
+- `action`：执行 `assess_posture`、`plan_self_righting`、`assess_terrain` 或 `plan_charging`。
+- `config`：设置 `runtimeMode`、`allowSelfRighting` 和 `allowAutoDocking`。
+- `sensor`：设置 Mock IMU、电量、防跌落和碰撞输入。
+- `posture`：为自动起身门槛提供姿态状态。
+- `expect`：断言高级行为决策字段，例如 `state`、`command` 和 `requiresUserConfirmation`。
 
 ## 阶段 3：简单状态可视化
 
