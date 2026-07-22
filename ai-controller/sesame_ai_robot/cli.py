@@ -10,7 +10,7 @@ from .logging_config import configure_logging
 from .mock_robot import MockRobotServer, MockRobotState
 from .detection import MockObjectDetector, result_to_jsonable as detection_result_to_jsonable
 from .face_identity import FaceIdentity, MockFaceRecognizer, recognition_to_jsonable
-from .assistant import AssistantPolicy, MockAssistantPipeline, plan_to_jsonable
+from .assistant import AssistantAction, AssistantPlan, AssistantPolicy, AssistantStep, MockAssistantPipeline, plan_to_jsonable
 from .advanced import RuntimeMode
 from .runtime import RobotRuntime, RobotRuntimeConfig, result_to_jsonable as runtime_result_to_jsonable
 from .tracking import TrackingDecision, TrackingState
@@ -58,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     assistant_parser.add_argument("text")
     assistant_parser.add_argument("--allow-motion", action="store_true")
 
-    for name in ("runtime-step", "runtime-run"):
+    for name in ("runtime-step", "runtime-run", "runtime-confirmation-demo"):
         runtime_parser = subparsers.add_parser(name, help="Run RobotRuntime without hardware by default")
         runtime_parser.add_argument("--mode", choices=[mode.value for mode in RuntimeMode], default=RuntimeMode.MOCK.value)
         runtime_parser.add_argument("--dry-run", action="store_true", default=False)
@@ -130,10 +130,11 @@ def main() -> int:
         print(json.dumps(plan_to_jsonable(pipeline.handle_text(args.text)), ensure_ascii=False, indent=2))
         return 0
 
-    if args.command in {"runtime-step", "runtime-run"}:
+    if args.command in {"runtime-step", "runtime-run", "runtime-confirmation-demo"}:
         mode = RuntimeMode(args.mode)
         config = RobotRuntimeConfig(runtime_mode=mode, dry_run=True if args.dry_run else mode != RuntimeMode.MOCK)
         state = MockRobotState(
+            emergency_stop_active=args.assistant_command == "reset_emergency_stop" or args.command == "runtime-confirmation-demo",
             virtual_battery_percent=args.battery_percent,
             virtual_sensors={
                 "frontDistanceM": 1.0,
@@ -159,9 +160,21 @@ def main() -> int:
                 )
             assistant = None
             if args.assistant_command:
-                assistant = MockAssistantPipeline(
-                    policy=AssistantPolicy(allow_motion_commands=True)
-                ).handle_text(f"sesame {args.assistant_command}")
+                assistant = _assistant_command_plan(args.assistant_command)
+            if args.command == "runtime-confirmation-demo":
+                assistant = _assistant_command_plan("reset_emergency_stop")
+                requested = runtime.step(tracking=tracking, assistant=assistant)
+                confirmation_id = requested.plan.confirmation_request.confirmation_id
+                accepted = runtime.step(tracking=tracking, assistant=assistant, confirmation_id=confirmation_id)
+                replay = runtime.step(tracking=tracking, assistant=assistant, confirmation_id=confirmation_id)
+                print(json.dumps({
+                    "runtimeMode": config.runtime_mode.value,
+                    "dryRun": config.dry_run,
+                    "request": runtime_result_to_jsonable(requested, config),
+                    "confirm": runtime_result_to_jsonable(accepted, config),
+                    "replay": runtime_result_to_jsonable(replay, config),
+                }, ensure_ascii=False, indent=2))
+                return 0
             count = 1 if args.command == "runtime-step" else args.steps
             results = tuple(runtime.step(tracking=tracking, assistant=assistant) for _ in range(count))
             payload = runtime_result_to_jsonable(results[-1], config)
@@ -196,6 +209,13 @@ def main() -> int:
     elif args.command == "heartbeat":
         print(json.dumps(client.heartbeat(), ensure_ascii=False, indent=2))
     return 0
+
+
+def _assistant_command_plan(command: str) -> AssistantPlan:
+    return AssistantPlan(
+        command,
+        (AssistantStep(AssistantAction.ROBOT_COMMAND, command, "runtime cli assistant command"),),
+    )
 
 
 if __name__ == "__main__":

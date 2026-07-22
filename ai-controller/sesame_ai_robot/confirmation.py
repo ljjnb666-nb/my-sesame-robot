@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 import hashlib
 import time
 import uuid
@@ -28,55 +29,112 @@ class ConfirmationGrant:
     context_token: str
 
 
+class ConfirmationErrorCode(str, Enum):
+    UNKNOWN_ID = "unknown_id"
+    EXPIRED = "expired"
+    ACTION_MISMATCH = "action_mismatch"
+    CONTEXT_CHANGED = "context_changed"
+    ALREADY_USED = "already_used"
+
+
+@dataclass(frozen=True)
+class ConfirmationContext:
+    runtime_mode: str
+    action: str
+    emergency_stop_active: bool
+    safety_severity: str
+    posture_state: str
+    communication_timed_out: bool
+    robot_motion_state: str
+    proposed_command: str | None = None
+    battery_percent: int | None = None
+    hardware_available: bool = False
+    experimental_enabled: bool = False
+
+    def as_token_payload(self) -> dict[str, Any]:
+        return {
+            "runtime_mode": self.runtime_mode,
+            "action": self.action,
+            "emergency_stop_active": self.emergency_stop_active,
+            "safety_severity": self.safety_severity,
+            "posture_state": self.posture_state,
+            "communication_timed_out": self.communication_timed_out,
+            "robot_motion_state": self.robot_motion_state,
+            "proposed_command": self.proposed_command or "",
+            "battery_percent": self.battery_percent,
+            "hardware_available": self.hardware_available,
+            "experimental_enabled": self.experimental_enabled,
+        }
+
+
+@dataclass(frozen=True)
+class ConfirmationResult:
+    accepted: bool
+    grant: ConfirmationGrant | None
+    error: ConfirmationErrorCode | None
+    reason: str
+
+
 @dataclass
 class ConfirmationStore:
     ttl_seconds: float = DEFAULT_CONFIRMATION_TTL_SECONDS
     _requests: dict[str, ConfirmationRequest] = field(default_factory=dict)
     _used: set[str] = field(default_factory=set)
 
-    def create(self, action: str, reason: str, context: dict[str, Any], now: float | None = None) -> ConfirmationRequest:
+    def create(
+        self,
+        action: str,
+        reason: str,
+        context: dict[str, Any] | ConfirmationContext,
+        now: float | None = None,
+    ) -> ConfirmationRequest:
         created_at = time.monotonic() if now is None else now
+        payload = _context_payload(context)
         request = ConfirmationRequest(
             confirmation_id=uuid.uuid4().hex,
             action=action,
             reason=reason,
             created_at=created_at,
             expires_at=created_at + self.ttl_seconds,
-            context_token=context_token(context),
+            context_token=context_token(payload),
         )
         self._requests[request.confirmation_id] = request
         return request
 
-    def grant(
+    def get_request(self, confirmation_id: str) -> ConfirmationRequest | None:
+        return self._requests.get(confirmation_id)
+
+    def consume(
         self,
         confirmation_id: str,
-        action: str,
-        context: dict[str, Any],
+        expected_action: str,
+        context: dict[str, Any] | ConfirmationContext,
         now: float | None = None,
-    ) -> ConfirmationGrant | None:
+    ) -> ConfirmationResult:
         granted_at = time.monotonic() if now is None else now
         request = self._requests.get(confirmation_id)
-        token = context_token(context)
         if request is None:
-            return None
+            return ConfirmationResult(False, None, ConfirmationErrorCode.UNKNOWN_ID, "confirmation id is unknown")
         if confirmation_id in self._used:
-            return None
-        if request.action != action:
-            return None
+            return ConfirmationResult(False, None, ConfirmationErrorCode.ALREADY_USED, "confirmation was already used")
+        if request.action != expected_action:
+            return ConfirmationResult(False, None, ConfirmationErrorCode.ACTION_MISMATCH, "confirmation action does not match")
         if request.expires_at < granted_at:
-            return None
+            return ConfirmationResult(False, None, ConfirmationErrorCode.EXPIRED, "confirmation has expired")
+        token = context_token(_context_payload(context))
         if request.context_token != token:
-            return None
+            return ConfirmationResult(False, None, ConfirmationErrorCode.CONTEXT_CHANGED, "confirmation context changed")
         self._used.add(confirmation_id)
-        return ConfirmationGrant(confirmation_id, action, granted_at, token)
+        grant = ConfirmationGrant(confirmation_id, request.action, granted_at, token)
+        return ConfirmationResult(True, grant, None, "confirmation accepted")
+
+
+def _context_payload(context: dict[str, Any] | ConfirmationContext) -> dict[str, Any]:
+    if isinstance(context, ConfirmationContext):
+        return context.as_token_payload()
+    return context
 
 
 def context_token(context: dict[str, Any]) -> str:
-    parts = [
-        str(context.get("runtime_mode", "")),
-        str(context.get("emergency_stop_active", "")),
-        str(context.get("posture", "")),
-        str(context.get("target_action", "")),
-        str(context.get("safety_summary", "")),
-    ]
+    parts = [f"{key}={context.get(key)!r}" for key in sorted(context)]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()

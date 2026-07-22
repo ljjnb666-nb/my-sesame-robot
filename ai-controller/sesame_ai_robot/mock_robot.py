@@ -191,6 +191,7 @@ class MockRobotServer:
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 if length > MAX_API_BODY_BYTES:
+                    self.rfile.read(length)
                     response = protocol_error("payload_too_large")
                     self._send_json(response.payload, response.status_code)
                     return

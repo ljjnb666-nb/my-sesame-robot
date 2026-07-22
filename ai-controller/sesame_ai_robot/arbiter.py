@@ -6,7 +6,7 @@ from typing import Any
 from .advanced import AdvancedDecision, RuntimeMode
 from .assistant import AssistantAction, AssistantPlan
 from .client import RobotClient
-from .confirmation import ConfirmationGrant, ConfirmationRequest, ConfirmationStore
+from .confirmation import ConfirmationContext, ConfirmationRequest
 from .safety import SafetyAssessment, SafetySeverity
 from .tracking import TrackingDecision
 
@@ -19,6 +19,13 @@ class RejectedAction:
 
 
 @dataclass(frozen=True)
+class ConfirmationRequirement:
+    action: str
+    reason: str
+    context: ConfirmationContext
+
+
+@dataclass(frozen=True)
 class RobotActionPlan:
     command: str | None
     face: str | None
@@ -26,6 +33,7 @@ class RobotActionPlan:
     source: str
     reason: str
     requires_user_confirmation: bool = False
+    confirmation_requirement: ConfirmationRequirement | None = None
     confirmation_request: ConfirmationRequest | None = None
     rejected_actions: tuple[RejectedAction, ...] = ()
 
@@ -42,8 +50,7 @@ class ArbiterInput:
     advanced: tuple[AdvancedDecision, ...] = ()
     assistant: AssistantPlan | None = None
     runtime_mode: RuntimeMode = RuntimeMode.MOCK
-    user_confirmed_actions: tuple[str, ...] = ()
-    confirmation_grants: tuple[ConfirmationGrant, ...] = ()
+    runtime_authorized_actions: tuple[str, ...] = ()
 
 
 class BehaviorArbiter:
@@ -143,6 +150,7 @@ class BehaviorArbiter:
             action = decision.feature.value
             proposed = decision.proposed_command or decision.command
             if decision.requires_user_confirmation and not self._has_confirmation(inputs, action):
+                context = self._confirmation_context(inputs, action, proposed, decision.state)
                 return RobotActionPlan(
                     None,
                     None,
@@ -150,10 +158,10 @@ class BehaviorArbiter:
                     "advanced",
                     decision.reason,
                     requires_user_confirmation=True,
-                    confirmation_request=ConfirmationStore().create(
+                    confirmation_requirement=ConfirmationRequirement(
                         action,
                         decision.reason,
-                        self._confirmation_context(inputs, proposed),
+                        context,
                     ),
                 )
             if decision.requires_user_confirmation and not decision.command:
@@ -264,6 +272,7 @@ class BehaviorArbiter:
                 return RobotActionPlan(None, None, None, "safety", "sensor safety still requires emergency stop")
             if self._has_confirmation(inputs, "reset_emergency_stop"):
                 return RobotActionPlan("reset_emergency_stop", None, None, "assistant", "confirmed emergency stop reset")
+            context = self._confirmation_context(inputs, "reset_emergency_stop", "reset_emergency_stop", "")
             return RobotActionPlan(
                 None,
                 None,
@@ -271,24 +280,40 @@ class BehaviorArbiter:
                 "assistant",
                 "emergency stop reset requires user confirmation",
                 requires_user_confirmation=True,
-                confirmation_request=ConfirmationStore().create(
+                confirmation_requirement=ConfirmationRequirement(
                     "reset_emergency_stop",
                     "emergency stop reset requires user confirmation",
-                    self._confirmation_context(inputs, "reset_emergency_stop"),
+                    context,
                 ),
             )
         return None
 
     def _has_confirmation(self, inputs: ArbiterInput, action: str) -> bool:
-        if action in inputs.user_confirmed_actions:
-            return True
-        return any(grant.action == action for grant in inputs.confirmation_grants)
+        return action in inputs.runtime_authorized_actions
 
-    def _confirmation_context(self, inputs: ArbiterInput, target_action: str | None) -> dict[str, Any]:
-        return {
-            "runtime_mode": inputs.runtime_mode.value,
-            "emergency_stop_active": bool(inputs.robot_status.get("emergencyStopActive", False)),
-            "posture": inputs.robot_status.get("motionState", ""),
-            "target_action": target_action or "",
-            "safety_summary": f"{inputs.safety.severity.value}:{inputs.safety.reason}",
-        }
+    def _confirmation_context(
+        self,
+        inputs: ArbiterInput,
+        action: str,
+        proposed_command: str | None,
+        posture_state: str,
+    ) -> ConfirmationContext:
+        return ConfirmationContext(
+            runtime_mode=inputs.runtime_mode.value,
+            action=action,
+            emergency_stop_active=bool(inputs.robot_status.get("emergencyStopActive", False)),
+            safety_severity=inputs.safety.severity.value,
+            posture_state=posture_state or str(inputs.robot_status.get("motionState", "")),
+            communication_timed_out=bool(inputs.robot_status.get("communicationTimedOut", False)),
+            robot_motion_state=str(inputs.robot_status.get("motionState", "")),
+            proposed_command=proposed_command,
+            battery_percent=_battery_percent(inputs.robot_status),
+            hardware_available=False,
+            experimental_enabled=False,
+        )
+
+
+def _battery_percent(status: dict[str, Any]) -> int | None:
+    battery = status.get("battery") if isinstance(status.get("battery"), dict) else {}
+    value = battery.get("percent", status.get("virtualBatteryPercent"))
+    return value if isinstance(value, int) else None
