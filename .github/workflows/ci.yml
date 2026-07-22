@@ -99,9 +99,9 @@ jobs:
       - name: AI interaction evals
         working-directory: ai-controller
         run: |
-          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-command --provider mock --mode simulator --text "查看机器人当前电量" --json
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-command --provider mock --mode simulator --text "battery status" --json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-command --provider mock --mode simulator --text "让机器人向前移动" --json
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-command --provider mock --mode simulator --text "walk forward" --json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 ai-eval --json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
