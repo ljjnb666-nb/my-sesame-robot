@@ -213,3 +213,20 @@ powershell -ExecutionPolicy Bypass -File ".\run-tests.ps1"
 - 验证真实传感器字段来自实体 ESP32 的完整状态。
 - 验证真实人脸注册、删除和识别流程；不得提交照片或特征数据。
 - 验证供电、电池、电机电流和舵机温度是否安全。
+
+## 2026-07-22 Protocol and Confirmation Update
+
+- Branch: `feat/ai-robot-v0`.
+- Firmware `/api/command` uses ArduinoJson `6.21.5`.
+- API request body limit: `512` bytes.
+- Mock and firmware error codes are documented in `development-notes/API_PROTOCOL.md`.
+- Added action-bound confirmation records for `reset_emergency_stop`, `self_righting`, and `charging_dock`.
+- Added structured `rejected_actions`; `blocked_actions` remains a compatibility view.
+- Runtime dry-run CLI commands are available for mock/simulator.
+- Verification in this update:
+  - AI controller unit tests: 74 OK.
+  - Simulator scenarios: 6 PASS.
+  - Advanced scenarios: 4 PASS.
+  - Integrated scenarios: 25 PASS.
+  - Firmware compile: PASS, 1,138,202 bytes flash (86%), 79,456 bytes RAM (24%).
+- No real hardware testing was performed. No serial port was opened, no ESP32 was flashed, no servo was driven, no camera or microphone was accessed, and no real self-righting or charging behavior was executed.

@@ -219,3 +219,18 @@ $env:SESAME_ROBOT_URL = "http://sesame-robot.local"
 - `SESAME_RECONNECT_ATTEMPTS`：自动重连尝试次数，默认 `3`。
 - `SESAME_RECONNECT_DELAY_S`：重连间隔秒数，默认 `0.5`。
 - `SESAME_LOG_LEVEL`：日志级别，默认 `INFO`。
+
+## 2026-07-22 Safety Protocol Update
+
+- Mock and firmware now share strict `/api/command` semantics: true JSON parsing, a 512-byte body limit, typed `command` and `face` fields, and stable error codes documented in `development-notes/API_PROTOCOL.md`.
+- `ConfirmationRequest` and `ConfirmationGrant` are action-bound, context-bound, expiring, one-time records. They are used for `reset_emergency_stop`, `self_righting`, and `charging_dock`.
+- `reset_emergency_stop` is only a request from the assistant; Arbiter and confirmation logic decide whether it can be sent. Reset does not resume old motion.
+- `RobotActionPlan` now exposes structured `rejected_actions` with `command`, `source`, and `reason`. `blocked_actions` remains a compatibility property.
+- Runtime dry-run commands:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" runtime-step --mode mock --dry-run
+powershell -ExecutionPolicy Bypass -File ".\run-cli.ps1" runtime-run --mode simulator --steps 3 --dry-run
+```
+
+`real_robot` remains blocked by default. Runtime CLI does not open a camera, microphone, serial port, or send real hardware commands.

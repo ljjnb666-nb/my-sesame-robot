@@ -188,3 +188,10 @@ powershell -ExecutionPolicy Bypass -File ".\run-vision-replay.ps1" --source came
 4. 最后才允许地面运动测试。
 
 任一步骤失败都不得自动进入下一步。
+
+## 2026-07-22 Scenario Update
+
+- Integrated scenarios now cover protocol boundaries, emergency reset confirmation, self-righting confirmation, charging intent without hardware, confirmation replay/context rejection, rejected action semantics, and runtime CLI dry-run.
+- `expectRejectedActions` is preferred for new scenarios. `expectBlockedActions` remains for compatibility.
+- The selected final command must not appear in `rejectedActions`; communication-timeout `stop` is the selected command, not a rejected action.
+- Protocol malformed JSON and oversized payload behavior is tested in `ai-controller/tests/test_mock_robot_protocol.py`; the integrated protocol scenario files document the coverage entry point.

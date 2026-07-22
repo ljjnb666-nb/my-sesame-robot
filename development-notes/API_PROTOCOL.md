@@ -1,0 +1,86 @@
+# Sesame HTTP API Protocol
+
+Last updated: 2026-07-22
+
+## Scope
+
+This document defines the shared firmware and mock-server `/api/command` protocol. The ESP32 firmware uses ArduinoJson for real JSON parsing, and the Python mock uses `sesame_ai_robot.protocol` for the same error names and status codes.
+
+## Dependencies
+
+- Firmware JSON parser: `ArduinoJson` `6.21.5`
+- Request body limit: `512` bytes
+- Build script: `scripts/firmware-build.ps1` checks for ArduinoJson and installs `ArduinoJson@6.21.5` when missing.
+
+## Request Validation
+
+`POST /api/command` accepts only a JSON object. The body must be non-empty and at most `512` bytes. At least one of `command` or `face` must be present.
+
+`command`, when present, must be a non-empty string and must be one of the supported firmware commands. Arrays, numbers, booleans, null, and objects are rejected.
+
+`face`, when present, must be a non-empty string and must be a known face name. Arrays, numbers, booleans, null, and objects are rejected.
+
+The firmware does not print the full request body to serial logs.
+
+## Error Response Shape
+
+```json
+{
+  "status": "error",
+  "error": "error_code",
+  "message": "Human readable message"
+}
+```
+
+## Error Codes
+
+- `400 invalid_json`
+- `400 invalid_payload`
+- `400 missing_command`
+- `400 invalid_command_type`
+- `400 empty_command`
+- `400 unknown_command`
+- `400 invalid_face_type`
+- `400 empty_face`
+- `400 unknown_face`
+- `409 emergency_stop_active`
+- `413 payload_too_large`
+- `405 method_not_allowed`
+
+## Success Responses
+
+Command:
+
+```json
+{
+  "status": "ok",
+  "message": "Command accepted",
+  "command": "forward"
+}
+```
+
+Face-only:
+
+```json
+{
+  "status": "ok",
+  "message": "Face updated",
+  "face": "happy"
+}
+```
+
+Heartbeat:
+
+```json
+{
+  "status": "ok",
+  "message": "Heartbeat accepted",
+  "command": "heartbeat"
+}
+```
+
+## Safety Notes
+
+Software emergency stop is not the same as a physical power-disconnect emergency stop. `reset_emergency_stop` must go through the AI controller confirmation workflow before the AI controller sends it. Resetting does not restore an old movement command; tracking must reacquire the target and the assistant must provide a new command.
+
+`stand` is a standing pose, not validated real self-righting. There is currently no real charging dock hardware, navigation, or docking command.

@@ -462,3 +462,15 @@
 - 组合场景覆盖跟随中跌倒、低电量、急停后自动起身请求、真实模式自动起身门槛、距离未知、距离过近、身份丢失、通信超时恢复、AI 动作被安全层否决和未知命令拒绝。
 - 固件和 Mock 协议已拒绝未知命令、空命令、缺失命令和非法 JSON。
 - 软件急停是软件锁存保护，不等于物理断电急停。
+
+## 2026-07-22 Update
+
+Status: completed for software/mock/simulator/firmware compile; waiting for real hardware validation.
+
+- Firmware API now uses ArduinoJson and a 512-byte request body limit.
+- Mock and firmware protocol errors are aligned in `development-notes/API_PROTOCOL.md`.
+- Runtime confirmation is action-bound, expiring, one-time, and context-bound.
+- Emergency reset requires confirmation and does not restore previous motion.
+- Real self-righting and charging remain blocked by default without hardware validation.
+- Runtime CLI dry-run is available for mock and simulator modes.
+- Real robot mode remains blocked by default.

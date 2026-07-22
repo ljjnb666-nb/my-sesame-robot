@@ -104,3 +104,25 @@
 
 - 软件阶段以编译、单元测试和 Mock 测试为主。
 - 需要真实硬件验证时，必须暂停并给用户具体步骤、预期结果和风险说明。
+
+## ADR-006: Strict JSON API and Action-Bound Confirmation
+
+Status: accepted.
+
+Decision:
+- Firmware `/api/command` uses ArduinoJson with a 512-byte body limit.
+- Firmware and Mock use the same error names and response shape.
+- Dangerous AI-controller actions use action-bound, expiring, one-time confirmation grants.
+- `reset_emergency_stop`, `self_righting`, and `charging_dock` require confirmation before execution planning.
+- `stand` is not treated as validated real self-righting.
+- Charging remains an intent because no real dock hardware or navigation stack exists.
+
+Reason:
+- String-search JSON parsing cannot safely reject malformed objects or wrong field types.
+- Tuple-based confirmations can be replayed or reused across actions.
+- Real hardware recovery actions need an explicit, auditable gate.
+
+Impact:
+- Mock protocol tests now validate types, oversize bodies, non-object JSON, and stable error payloads.
+- Runtime CLI supports mock/simulator dry-run JSON output.
+- `real_robot` remains blocked by default.

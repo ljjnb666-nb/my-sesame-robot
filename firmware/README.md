@@ -876,3 +876,16 @@ This eliminates the need to manually update multiple switch statements or arrays
 1. **Toolchain**: Configure your IDE for `ESP32 Dev Module` or `Lolin S2 Mini`.
 2. **Calibration**: Use the Serial Monitor (115200) to send manual step commands (e.g., `rn wf`).
 3. **Power Management**: If the robot brownouts during movement, increase `motorCurrentDelay` in the web settings to further stagger servo bursts.
+
+## 2026-07-22 JSON API Safety Update
+
+- `/api/command` now uses ArduinoJson instead of string search parsing.
+- Firmware dependency: `ArduinoJson` `6.21.5`.
+- Maximum request body size: `512` bytes. Larger bodies return HTTP `413` with `payload_too_large`.
+- The firmware rejects non-object JSON, missing `command`/`face`, non-string `command`, non-string `face`, empty strings, unknown commands, and unknown faces.
+- Error responses use the shared shape `{"status":"error","error":"code","message":"..."}`.
+- Success responses include the accepted `command` or updated `face`.
+- The firmware logs body size and parsed field names, but not the complete request body.
+- Software emergency stop is a software latch and is not a physical power-disconnect emergency stop.
+- `stand` remains a standing pose and has not been validated as real self-righting.
+- No real charging dock hardware or docking firmware command exists yet.
