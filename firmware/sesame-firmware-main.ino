@@ -236,6 +236,7 @@ String jsonEscape(const String& value);
 const char* getMotionState();
 void completeRobotMotion();
 void clearSerialInputState();
+void sendApiError(int statusCode, const char* error, const char* message);
 void executeSerialCommand(const char* command, bool allowLongActions);
 void processSerialInput(bool emergencyOnly = false);
 void setServoAngle(uint8_t channel, int angle);
@@ -337,9 +338,6 @@ void setCurrentCommandFromRobotCommand(RobotCommand command, const String& origi
   }
 
   if (command == RobotCommand::Unknown) {
-    if (!isEmergencyStopActive()) {
-      currentCommand = originalCommand;
-    }
     return;
   }
 
@@ -557,6 +555,19 @@ String jsonEscape(const String& value) {
   return escaped;
 }
 
+void sendApiError(int statusCode, const char* error, const char* message) {
+  String json = "{";
+  json += "\"status\":\"error\",";
+  json += "\"error\":\"";
+  json += error;
+  json += "\",";
+  json += "\"message\":\"";
+  json += message;
+  json += "\"";
+  json += "}";
+  server.send(statusCode, "application/json", json);
+}
+
 const char* getMotionState() {
   if (isEmergencyStopActive()) return "emergency_stop";
   if (communicationTimedOut) return "communication_timeout";
@@ -659,27 +670,35 @@ void handleGetStatus() {
 // API endpoint for network clients to send commands (JSON-based)
 void handleApiCommand() {
   if (server.method() != HTTP_POST) {
-    server.send(405, "application/json", "{\"error\":\"Method not allowed\"}");
+    sendApiError(405, "method_not_allowed", "Method not allowed");
     return;
   }
-  
+
   String body = server.arg("plain");
-  
+
   Serial.println("API Command received:");
   Serial.println(body);
-  
+
+  String trimmedBody = body;
+  trimmedBody.trim();
+  if (trimmedBody.length() == 0 || !trimmedBody.startsWith("{") || !trimmedBody.endsWith("}")) {
+    Serial.println("Error: invalid JSON body");
+    sendApiError(400, "invalid_json", "Invalid JSON body");
+    return;
+  }
+
   // Check for face-only command (no movement)
   int faceOnlyStart = body.indexOf("\"face\":\"");
   if (faceOnlyStart == -1) {
     faceOnlyStart = body.indexOf("\"face\": \"");
   }
-  
+
   // If we have a face but no command field, it's face-only
   bool faceOnly = (faceOnlyStart > 0 && body.indexOf("\"command\":") == -1 && body.indexOf("\"command\": ") == -1);
-  
+
   String command = "";
   String face = "";
-  
+
   // Parse face
   if (faceOnlyStart > 0) {
     faceOnlyStart = body.indexOf("\"", faceOnlyStart + 6) + 1;
@@ -690,29 +709,29 @@ void handleApiCommand() {
       Serial.println(face);
     }
   }
-  
+
   // Parse command (if not face-only)
   if (!faceOnly) {
     int cmdStart = body.indexOf("\"command\":\"");
     if (cmdStart == -1) {
       cmdStart = body.indexOf("\"command\": \"");
     }
-    
+
     if (cmdStart == -1) {
       Serial.println("Error: command field not found");
-      server.send(400, "application/json", "{\"error\":\"Missing command field\"}");
+      sendApiError(400, "missing_command", "Missing command field");
       return;
     }
-    
+
     cmdStart = body.indexOf("\"", cmdStart + 10) + 1;
     int cmdEnd = body.indexOf("\"", cmdStart);
-    
+
     if (cmdEnd <= cmdStart) {
       Serial.println("Error: invalid command format");
-      server.send(400, "application/json", "{\"error\":\"Invalid command format\"}");
+      sendApiError(400, "invalid_command", "Invalid command format");
       return;
     }
-    
+
     command = body.substring(cmdStart, cmdEnd);
     Serial.print("Parsed command: ");
     Serial.println(command);
@@ -731,6 +750,28 @@ void handleApiCommand() {
   }
   
   RobotCommand robotCommand = parseRobotCommand(command);
+
+  if (robotCommand == RobotCommand::None) {
+    Serial.println("Error: empty command");
+    sendApiError(400, "empty_command", "Command must not be empty");
+    return;
+  }
+
+  if (robotCommand == RobotCommand::Unknown) {
+    Serial.println("Error: unknown command");
+    sendApiError(400, "unknown_command", "Unsupported robot command");
+    return;
+  }
+
+  if (isEmergencyStopActive() &&
+      robotCommand != RobotCommand::EmergencyStop &&
+      robotCommand != RobotCommand::ResetEmergencyStop &&
+      robotCommand != RobotCommand::Stop &&
+      robotCommand != RobotCommand::Heartbeat) {
+    Serial.println("Error: emergency stop blocks command");
+    sendApiError(409, "emergency_stop_active", "Emergency stop is active");
+    return;
+  }
 
   if (robotCommand == RobotCommand::Heartbeat) {
     refreshContinuousCommandDeadline(currentCommand);

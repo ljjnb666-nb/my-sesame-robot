@@ -17,6 +17,20 @@ AVAILABLE_COMMANDS = [
 ]
 
 
+@dataclass(frozen=True)
+class MockRobotResponse:
+    status_code: int
+    payload: dict[str, Any]
+
+
+def api_error(status_code: int, error: str, message: str) -> MockRobotResponse:
+    return MockRobotResponse(status_code, {
+        "status": "error",
+        "error": error,
+        "message": message,
+    })
+
+
 @dataclass
 class MockRobotState:
     command_timeout_ms: int = 1200
@@ -70,7 +84,12 @@ class MockRobotState:
             "apIP": "127.0.0.1",
         }
 
-    def apply_command(self, payload: dict[str, Any]) -> dict[str, str]:
+    def apply_command(self, payload: dict[str, Any]) -> MockRobotResponse:
+        has_command = "command" in payload
+        has_face = "face" in payload
+        if not has_command and not has_face:
+            return api_error(400, "missing_command", "Missing command field")
+
         command = str(payload.get("command", "")).strip().lower()
         face = payload.get("face")
         now = time.monotonic()
@@ -78,9 +97,21 @@ class MockRobotState:
         if face:
             self.current_face = str(face)
 
-        if not command:
+        if not has_command and has_face:
             self.last_command_at = now
-            return {"status": "ok", "message": "Face updated"}
+            return MockRobotResponse(200, {"status": "ok", "message": "Face updated"})
+
+        if not command:
+            return api_error(400, "empty_command", "Command must not be empty")
+
+        if command not in AVAILABLE_COMMANDS:
+            return api_error(400, "unknown_command", "Unsupported robot command")
+
+        if (
+            self.emergency_stop_active
+            and command not in {"emergency_stop", "reset_emergency_stop", "stop", "heartbeat"}
+        ):
+            return api_error(409, "emergency_stop_active", "Emergency stop is active")
 
         if command == "emergency_stop":
             self.emergency_stop_active = True
@@ -97,14 +128,14 @@ class MockRobotState:
             if self.current_command in CONTINUOUS_COMMANDS:
                 self.last_command_at = now
                 self.communication_timed_out = False
-            return {"status": "ok", "message": "Heartbeat accepted"}
-        elif command in AVAILABLE_COMMANDS and not self.emergency_stop_active:
+            return MockRobotResponse(200, {"status": "ok", "message": "Heartbeat accepted"})
+        elif command in AVAILABLE_COMMANDS:
             self.current_command = command
             self._apply_virtual_pose(command)
             self.communication_timed_out = False
 
         self.last_command_at = now
-        return {"status": "ok", "message": "Command executed"}
+        return MockRobotResponse(200, {"status": "ok", "message": "Command executed"})
 
     def _apply_virtual_pose(self, command: str) -> None:
         poses = {
@@ -162,15 +193,25 @@ class MockRobotServer:
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 body = self.rfile.read(length).decode("utf-8") if length else "{}"
-                payload = json.loads(body)
-                self._send_json(state.apply_command(payload))
+                try:
+                    payload = json.loads(body)
+                except json.JSONDecodeError:
+                    response = api_error(400, "invalid_json", "Invalid JSON body")
+                    self._send_json(response.payload, response.status_code)
+                    return
+                if not isinstance(payload, dict):
+                    response = api_error(400, "invalid_json", "Invalid JSON body")
+                    self._send_json(response.payload, response.status_code)
+                    return
+                response = state.apply_command(payload)
+                self._send_json(response.payload, response.status_code)
 
             def log_message(self, format: str, *args: object) -> None:
                 return
 
-            def _send_json(self, payload: dict[str, Any]) -> None:
+            def _send_json(self, payload: dict[str, Any], status_code: int = 200) -> None:
                 body = json.dumps(payload).encode("utf-8")
-                self.send_response(200)
+                self.send_response(status_code)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
