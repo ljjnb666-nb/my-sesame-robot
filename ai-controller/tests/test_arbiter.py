@@ -3,6 +3,7 @@ import unittest
 from sesame_ai_robot.advanced import AdvancedDecision, AdvancedFeature, RuntimeMode
 from sesame_ai_robot.arbiter import ArbiterInput, BehaviorArbiter
 from sesame_ai_robot.assistant import AssistantAction, AssistantPlan, AssistantStep
+from sesame_ai_robot.confirmation import ConfirmationGrant
 from sesame_ai_robot.safety import SafetyAssessment, SafetySeverity
 from sesame_ai_robot.tracking import TrackingDecision, TrackingState
 
@@ -23,6 +24,36 @@ class BehaviorArbiterTest(unittest.TestCase):
         self.assertIsNone(plan.command)
         self.assertIn("stand", plan.blocked_actions)
         self.assertIn("walk_forward", plan.blocked_actions)
+
+    def test_emergency_reset_requires_confirmation(self):
+        assistant = AssistantPlan("reset", (
+            AssistantStep(AssistantAction.ROBOT_COMMAND, "reset_emergency_stop", "user requested reset"),
+        ))
+
+        plan = BehaviorArbiter().decide(ArbiterInput(
+            robot_status={"emergencyStopActive": True},
+            safety=ok_safety(),
+            assistant=assistant,
+        ))
+
+        self.assertIsNone(plan.command)
+        self.assertTrue(plan.requires_user_confirmation)
+        self.assertEqual(plan.confirmation_request.action, "reset_emergency_stop")
+
+    def test_emergency_reset_with_confirmation_is_allowed(self):
+        assistant = AssistantPlan("reset", (
+            AssistantStep(AssistantAction.ROBOT_COMMAND, "reset_emergency_stop", "user requested reset"),
+        ))
+
+        plan = BehaviorArbiter().decide(ArbiterInput(
+            robot_status={"emergencyStopActive": True},
+            safety=ok_safety(),
+            assistant=assistant,
+            confirmation_grants=(ConfirmationGrant("id", "reset_emergency_stop", 1.0, "token"),),
+        ))
+
+        self.assertEqual(plan.command, "reset_emergency_stop")
+        self.assertEqual(plan.source, "assistant")
 
     def test_safety_emergency_stop_overrides_tracking(self):
         plan = BehaviorArbiter().decide(ArbiterInput(
@@ -80,6 +111,9 @@ class BehaviorArbiterTest(unittest.TestCase):
 
         self.assertEqual(plan.command, "turn_left")
         self.assertEqual(plan.source, "tracking")
+        self.assertNotIn("turn_left", plan.blocked_actions)
+        self.assertTrue(all(action.source for action in plan.rejected_actions))
+        self.assertTrue(all(action.reason for action in plan.rejected_actions))
 
     def test_unknown_assistant_command_is_rejected_before_client(self):
         assistant = AssistantPlan("fly", (

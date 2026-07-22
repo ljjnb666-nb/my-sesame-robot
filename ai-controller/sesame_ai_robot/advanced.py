@@ -43,6 +43,7 @@ class ChargingIntent(str, Enum):
 class AdvancedFeatureConfig:
     runtime_mode: RuntimeMode = RuntimeMode.MOCK
     allow_self_righting: bool = False
+    allow_experimental_self_righting_command: bool = False
     allow_auto_docking: bool = False
     tilted_deg: float = 18.0
     fallen_deg: float = 60.0
@@ -56,6 +57,7 @@ class AdvancedDecision:
     command: str | None
     reason: str
     requires_user_confirmation: bool = False
+    proposed_command: str | None = None
 
 
 @dataclass(frozen=True)
@@ -135,9 +137,14 @@ class AdvancedBehaviorPlanner:
             return AdvancedDecision(
                 AdvancedFeature.SELF_RIGHTING,
                 posture.value,
-                None,
-                "real robot self-righting requires explicit user confirmation",
+                "stand" if self.config.allow_experimental_self_righting_command else None,
+                (
+                    "real robot self-righting requires explicit user confirmation"
+                    if self.config.allow_experimental_self_righting_command
+                    else "requires additional hardware validation"
+                ),
                 requires_user_confirmation=True,
+                proposed_command="stand",
             )
 
         if not self.config.allow_self_righting:
@@ -153,6 +160,7 @@ class AdvancedBehaviorPlanner:
             posture.value,
             "stand",
             "mock self-righting can request a high-level stand command",
+            proposed_command="stand",
         )
 
     def assess_terrain(self, snapshot: SensorSnapshot) -> AdvancedDecision:
@@ -192,18 +200,20 @@ class AdvancedBehaviorPlanner:
             return AdvancedDecision(
                 AdvancedFeature.CHARGING_DOCK,
                 ChargingIntent.WAIT_FOR_USER.value,
-                "stop",
+                None,
                 "real docking requires explicit user confirmation",
                 requires_user_confirmation=True,
+                proposed_command=None,
             )
 
         if not self.config.allow_auto_docking:
             return AdvancedDecision(
-                AdvancedFeature.CHARGING_DOCK,
-                ChargingIntent.WAIT_FOR_USER.value,
-                "stop",
-                "auto docking is disabled by policy",
-            )
+            AdvancedFeature.CHARGING_DOCK,
+            ChargingIntent.WAIT_FOR_USER.value,
+            None,
+            "auto docking is disabled by policy",
+            proposed_command=None,
+        )
 
         return AdvancedDecision(
             AdvancedFeature.CHARGING_DOCK,

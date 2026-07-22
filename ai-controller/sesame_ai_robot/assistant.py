@@ -52,6 +52,11 @@ class MockSpeechRecognizer:
 class MockLanguageModel:
     def plan(self, transcript: str) -> tuple[AssistantStep, ...]:
         normalized = transcript.lower()
+        if "reset emergency stop" in normalized or "解除急停" in transcript:
+            return (
+                AssistantStep(AssistantAction.ROBOT_COMMAND, "reset_emergency_stop", "user requested emergency stop reset"),
+                AssistantStep(AssistantAction.SAY, "Emergency stop reset needs confirmation.", "explain confirmation"),
+            )
         if "emergency" in normalized or "急停" in transcript:
             return (
                 AssistantStep(AssistantAction.ROBOT_COMMAND, "emergency_stop", "user requested emergency stop"),

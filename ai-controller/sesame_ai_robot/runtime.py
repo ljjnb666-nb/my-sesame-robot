@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from .advanced import AdvancedBehaviorPlanner, AdvancedFeatureConfig, PostureState, RuntimeMode
 from .arbiter import ArbiterInput, BehaviorArbiter, RobotActionPlan
 from .assistant import AssistantPlan
 from .client import RobotClient
+from .confirmation import ConfirmationGrant
 from .safety import SafetyMonitor, SensorSnapshot
 from .tracking import TrackingDecision
 
@@ -50,6 +52,7 @@ class RobotRuntime:
         tracking: TrackingDecision | None = None,
         assistant: AssistantPlan | None = None,
         user_confirmed_actions: tuple[str, ...] = (),
+        confirmation_grants: tuple[ConfirmationGrant, ...] = (),
     ) -> RuntimeStepResult:
         if self.config.runtime_mode == RuntimeMode.REAL_ROBOT and not self.config.allow_real_robot:
             plan = RobotActionPlan(
@@ -83,6 +86,7 @@ class RobotRuntime:
             assistant=assistant,
             runtime_mode=self.config.runtime_mode,
             user_confirmed_actions=user_confirmed_actions,
+            confirmation_grants=confirmation_grants,
         ))
 
         sent_command = False
@@ -104,12 +108,72 @@ class RobotRuntime:
         return tuple(self.step() for _ in range(count))
 
     def _log(self, result: RuntimeStepResult) -> None:
+        status = result.status
+        rejected_actions = [
+            {"command": action.command, "source": action.source, "reason": action.reason}
+            for action in result.plan.rejected_actions
+        ]
         self.logs.append({
-            "source": result.plan.source,
-            "command": result.plan.command,
-            "face": result.plan.face,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "runtime_mode": self.config.runtime_mode.value,
+            "dry_run": self.config.dry_run,
+            "robot_status_summary": {
+                "motionState": status.get("motionState"),
+                "emergencyStopActive": status.get("emergencyStopActive"),
+                "communicationTimedOut": status.get("communicationTimedOut"),
+            },
+            "safety_severity": result.plan.source if result.plan.source == "safety" else None,
+            "selected_command": result.plan.command,
+            "selected_source": result.plan.source,
             "reason": result.plan.reason,
-            "requiresUserConfirmation": result.plan.requires_user_confirmation,
-            "sentCommand": result.sent_command,
-            "sentFace": result.sent_face,
+            "confirmation_id": (
+                result.plan.confirmation_request.confirmation_id
+                if result.plan.confirmation_request is not None
+                else None
+            ),
+            "confirmation_state": "requested" if result.plan.requires_user_confirmation else "none",
+            "rejected_actions": rejected_actions,
+            "sent_command": result.sent_command,
+            "sent_face": result.sent_face,
+            "error": None,
         })
+
+
+def plan_to_jsonable(plan: RobotActionPlan) -> dict[str, Any]:
+    return {
+        "command": plan.command,
+        "face": plan.face,
+        "speech": plan.speech,
+        "source": plan.source,
+        "reason": plan.reason,
+        "requiresUserConfirmation": plan.requires_user_confirmation,
+        "confirmationRequest": (
+            {
+                "confirmationId": plan.confirmation_request.confirmation_id,
+                "action": plan.confirmation_request.action,
+                "reason": plan.confirmation_request.reason,
+                "createdAt": plan.confirmation_request.created_at,
+                "expiresAt": plan.confirmation_request.expires_at,
+                "contextToken": plan.confirmation_request.context_token,
+            }
+            if plan.confirmation_request is not None
+            else None
+        ),
+        "rejectedActions": [
+            {"command": action.command, "source": action.source, "reason": action.reason}
+            for action in plan.rejected_actions
+        ],
+    }
+
+
+def result_to_jsonable(result: RuntimeStepResult, config: RobotRuntimeConfig) -> dict[str, Any]:
+    return {
+        "runtimeMode": config.runtime_mode.value,
+        "dryRun": config.dry_run,
+        "status": result.status,
+        "plan": plan_to_jsonable(result.plan),
+        "executed": {
+            "commandSent": result.sent_command,
+            "faceSent": result.sent_face,
+        },
+    }
