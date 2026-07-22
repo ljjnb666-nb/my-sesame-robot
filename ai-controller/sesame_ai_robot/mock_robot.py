@@ -7,14 +7,9 @@ import threading
 import time
 from typing import Any
 
+from .protocol import AVAILABLE_COMMANDS, AVAILABLE_FACES, ERRORS, MAX_API_BODY_BYTES, validate_api_payload
 
 CONTINUOUS_COMMANDS = {"forward", "backward", "left", "right"}
-AVAILABLE_COMMANDS = [
-    "stand", "rest", "forward", "backward", "left", "right", "stop",
-    "wave", "dance", "swim", "point", "pushup", "bow", "cute", "freaky",
-    "worm", "shake", "shrug", "dead", "crab", "emergency_stop",
-    "reset_emergency_stop", "heartbeat",
-]
 
 
 @dataclass(frozen=True)
@@ -29,6 +24,11 @@ def api_error(status_code: int, error: str, message: str) -> MockRobotResponse:
         "error": error,
         "message": message,
     })
+
+
+def protocol_error(code: str) -> MockRobotResponse:
+    error = ERRORS[code]
+    return MockRobotResponse(error.status_code, error.payload())
 
 
 @dataclass
@@ -75,7 +75,7 @@ class MockRobotState:
             "commandTimeoutMs": self.command_timeout_ms,
             "lastCommandMs": last_command_ms,
             "lastCommandAgeMs": last_command_age_ms,
-            "availableCommands": AVAILABLE_COMMANDS,
+            "availableCommands": sorted(AVAILABLE_COMMANDS),
             "capabilities": ["json_api", "face_control", "latched_emergency_stop", "communication_timeout_soft_stop", "mock_robot"],
             "virtualBatteryPercent": self.virtual_battery_percent,
             "virtualServoAngles": self.virtual_servo_angles,
@@ -85,33 +85,23 @@ class MockRobotState:
         }
 
     def apply_command(self, payload: dict[str, Any]) -> MockRobotResponse:
-        has_command = "command" in payload
-        has_face = "face" in payload
-        if not has_command and not has_face:
-            return api_error(400, "missing_command", "Missing command field")
-
-        command = str(payload.get("command", "")).strip().lower()
-        face = payload.get("face")
+        command, face, error = validate_api_payload(payload)
+        if error is not None:
+            return MockRobotResponse(error.status_code, error.payload())
         now = time.monotonic()
 
-        if face:
-            self.current_face = str(face)
+        if face is not None:
+            self.current_face = face
 
-        if not has_command and has_face:
+        if command is None and face is not None:
             self.last_command_at = now
-            return MockRobotResponse(200, {"status": "ok", "message": "Face updated"})
-
-        if not command:
-            return api_error(400, "empty_command", "Command must not be empty")
-
-        if command not in AVAILABLE_COMMANDS:
-            return api_error(400, "unknown_command", "Unsupported robot command")
+            return MockRobotResponse(200, {"status": "ok", "message": "Face updated", "face": face})
 
         if (
             self.emergency_stop_active
             and command not in {"emergency_stop", "reset_emergency_stop", "stop", "heartbeat"}
         ):
-            return api_error(409, "emergency_stop_active", "Emergency stop is active")
+            return protocol_error("emergency_stop_active")
 
         if command == "emergency_stop":
             self.emergency_stop_active = True
@@ -128,14 +118,22 @@ class MockRobotState:
             if self.current_command in CONTINUOUS_COMMANDS:
                 self.last_command_at = now
                 self.communication_timed_out = False
-            return MockRobotResponse(200, {"status": "ok", "message": "Heartbeat accepted"})
+            return MockRobotResponse(200, {"status": "ok", "message": "Heartbeat accepted", "command": "heartbeat"})
         elif command in AVAILABLE_COMMANDS:
             self.current_command = command
             self._apply_virtual_pose(command)
             self.communication_timed_out = False
 
         self.last_command_at = now
-        return MockRobotResponse(200, {"status": "ok", "message": "Command executed"})
+        if command == "stop":
+            message = "Command stopped"
+        elif command == "emergency_stop":
+            message = "Emergency stop activated"
+        elif command == "reset_emergency_stop":
+            message = "Emergency stop reset"
+        else:
+            message = "Command accepted"
+        return MockRobotResponse(200, {"status": "ok", "message": message, "command": command})
 
     def _apply_virtual_pose(self, command: str) -> None:
         poses = {
@@ -192,15 +190,23 @@ class MockRobotServer:
                     self.send_error(404)
                     return
                 length = int(self.headers.get("Content-Length", "0"))
-                body = self.rfile.read(length).decode("utf-8") if length else "{}"
+                if length > MAX_API_BODY_BYTES:
+                    response = protocol_error("payload_too_large")
+                    self._send_json(response.payload, response.status_code)
+                    return
+                if length == 0:
+                    response = protocol_error("invalid_json")
+                    self._send_json(response.payload, response.status_code)
+                    return
+                body = self.rfile.read(length).decode("utf-8")
                 try:
                     payload = json.loads(body)
                 except json.JSONDecodeError:
-                    response = api_error(400, "invalid_json", "Invalid JSON body")
+                    response = protocol_error("invalid_json")
                     self._send_json(response.payload, response.status_code)
                     return
                 if not isinstance(payload, dict):
-                    response = api_error(400, "invalid_json", "Invalid JSON body")
+                    response = protocol_error("invalid_payload")
                     self._send_json(response.payload, response.status_code)
                     return
                 response = state.apply_command(payload)

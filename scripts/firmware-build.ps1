@@ -1,6 +1,8 @@
 ﻿param(
     [string]$Fqbn = "esp32:esp32:lolin_s2_mini",
 
+    [string]$ArduinoJsonVersion = "6.21.5",
+
     [ValidateSet("none", "default", "more", "all")]
     [string]$Warnings = "default"
 )
@@ -20,6 +22,18 @@ if (-not (Get-Command arduino-cli -ErrorAction SilentlyContinue)) {
 # 检查固件主文件
 if (-not (Test-Path $MainSketch)) {
     throw "未找到固件主文件：$MainSketch"
+}
+
+$Libraries = & arduino-cli lib list 2>$null
+if ($LASTEXITCODE -ne 0 -or ($Libraries -notmatch "ArduinoJson")) {
+    Write-Host "安装 ArduinoJson@$ArduinoJsonVersion ..."
+    & arduino-cli lib install "ArduinoJson@$ArduinoJsonVersion"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "ArduinoJson 依赖安装失败，退出代码：$LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+} else {
+    Write-Host "已检测到 ArduinoJson 库。要求版本：$ArduinoJsonVersion"
 }
 
 # Arduino 要求主 ino 文件名和 sketch 文件夹名一致

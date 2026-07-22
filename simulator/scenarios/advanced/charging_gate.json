@@ -14,7 +14,7 @@
       "expect": {
         "feature": "charging_dock",
         "state": "wait_for_user",
-        "command": "stop",
+        "command": null,
         "requiresUserConfirmation": true
       }
     }

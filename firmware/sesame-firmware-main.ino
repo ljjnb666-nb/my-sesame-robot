@@ -6,6 +6,7 @@
 #include <ESP32Servo.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <ArduinoJson.h>
 #include "face-bitmaps.h"
 #include "movement-sequences.h"
 #include "captive-portal.h"
@@ -114,6 +115,7 @@ int frameDelay = 100;
 int walkCycles = 10;
 int motorCurrentDelay = 20; // ms delay between motor movements to prevent over-current
 const unsigned long COMMUNICATION_TIMEOUT_MS = 1200;
+const size_t MAX_API_BODY_BYTES = 512;
 
 struct FaceEntry {
   const char* name;
@@ -250,6 +252,7 @@ void enterIdle();
 void exitIdle();
 void updateIdleBlink();
 int getFaceFpsForName(const String& faceName);
+bool isSupportedFaceName(const String& faceName);
 bool pressingCheck(String cmd, int ms);
 void handleGetSettings();
 void handleSetSettings();
@@ -675,80 +678,97 @@ void handleApiCommand() {
   }
 
   String body = server.arg("plain");
+  Serial.print("API command body bytes: ");
+  Serial.println(body.length());
 
-  Serial.println("API Command received:");
-  Serial.println(body);
+  if (body.length() == 0) {
+    Serial.println("Error: empty API body");
+    sendApiError(400, "invalid_json", "Invalid JSON body");
+    return;
+  }
 
-  String trimmedBody = body;
-  trimmedBody.trim();
-  if (trimmedBody.length() == 0 || !trimmedBody.startsWith("{") || !trimmedBody.endsWith("}")) {
+  if (body.length() > MAX_API_BODY_BYTES) {
+    Serial.println("Error: API body too large");
+    sendApiError(413, "payload_too_large", "Request body is too large");
+    return;
+  }
+
+  StaticJsonDocument<MAX_API_BODY_BYTES> doc;
+  DeserializationError jsonError = deserializeJson(doc, body);
+  if (jsonError) {
     Serial.println("Error: invalid JSON body");
     sendApiError(400, "invalid_json", "Invalid JSON body");
     return;
   }
 
-  // Check for face-only command (no movement)
-  int faceOnlyStart = body.indexOf("\"face\":\"");
-  if (faceOnlyStart == -1) {
-    faceOnlyStart = body.indexOf("\"face\": \"");
+  if (!doc.is<JsonObject>()) {
+    Serial.println("Error: API body must be object");
+    sendApiError(400, "invalid_payload", "Request body must be a JSON object");
+    return;
   }
 
-  // If we have a face but no command field, it's face-only
-  bool faceOnly = (faceOnlyStart > 0 && body.indexOf("\"command\":") == -1 && body.indexOf("\"command\": ") == -1);
+  JsonObject payload = doc.as<JsonObject>();
+  bool hasCommand = payload.containsKey("command");
+  bool hasFace = payload.containsKey("face");
+
+  if (!hasCommand && !hasFace) {
+    Serial.println("Error: command or face field not found");
+    sendApiError(400, "missing_command", "Missing command or face field");
+    return;
+  }
 
   String command = "";
   String face = "";
 
-  // Parse face
-  if (faceOnlyStart > 0) {
-    faceOnlyStart = body.indexOf("\"", faceOnlyStart + 6) + 1;
-    int faceEnd = body.indexOf("\"", faceOnlyStart);
-    if (faceEnd > faceOnlyStart) {
-      face = body.substring(faceOnlyStart, faceEnd);
-      Serial.print("Parsed face: ");
-      Serial.println(face);
-    }
-  }
-
-  // Parse command (if not face-only)
-  if (!faceOnly) {
-    int cmdStart = body.indexOf("\"command\":\"");
-    if (cmdStart == -1) {
-      cmdStart = body.indexOf("\"command\": \"");
-    }
-
-    if (cmdStart == -1) {
-      Serial.println("Error: command field not found");
-      sendApiError(400, "missing_command", "Missing command field");
+  if (hasCommand) {
+    if (!payload["command"].is<const char*>()) {
+      Serial.println("Error: invalid command type");
+      sendApiError(400, "invalid_command_type", "Command must be a string");
       return;
     }
 
-    cmdStart = body.indexOf("\"", cmdStart + 10) + 1;
-    int cmdEnd = body.indexOf("\"", cmdStart);
-
-    if (cmdEnd <= cmdStart) {
-      Serial.println("Error: invalid command format");
-      sendApiError(400, "invalid_command", "Invalid command format");
+    command = String(payload["command"].as<const char*>());
+    command.trim();
+    command.toLowerCase();
+    if (command.length() == 0) {
+      Serial.println("Error: empty command");
+      sendApiError(400, "empty_command", "Command must not be empty");
       return;
     }
 
-    command = body.substring(cmdStart, cmdEnd);
     Serial.print("Parsed command: ");
     Serial.println(command);
   }
-  
-  // Set face if provided
-  if (face.length() > 0) {
+
+  if (hasFace) {
+    if (!payload["face"].is<const char*>()) {
+      Serial.println("Error: invalid face type");
+      sendApiError(400, "invalid_face_type", "Face must be a string");
+      return;
+    }
+
+    face = String(payload["face"].as<const char*>());
+    face.trim();
+    face.toLowerCase();
+    if (face.length() == 0) {
+      Serial.println("Error: empty face");
+      sendApiError(400, "empty_face", "Face must not be empty");
+      return;
+    }
+    if (!isSupportedFaceName(face)) {
+      Serial.println("Error: unknown face");
+      sendApiError(400, "unknown_face", "Unsupported face");
+      return;
+    }
     setFace(face);
   }
-  
-  // If face-only, just acknowledge
-  if (faceOnly) {
+
+  if (!hasCommand) {
     recordInput();
-    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Face updated\"}");
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Face updated\",\"face\":\"" + jsonEscape(face) + "\"}");
     return;
   }
-  
+
   RobotCommand robotCommand = parseRobotCommand(command);
 
   if (robotCommand == RobotCommand::None) {
@@ -776,7 +796,7 @@ void handleApiCommand() {
   if (robotCommand == RobotCommand::Heartbeat) {
     refreshContinuousCommandDeadline(currentCommand);
     recordInput();
-    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Heartbeat accepted\"}");
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Heartbeat accepted\",\"command\":\"heartbeat\"}");
     return;
   }
 
@@ -784,13 +804,21 @@ void handleApiCommand() {
   if (robotCommand == RobotCommand::Stop) {
     setCurrentCommandFromRobotCommand(robotCommand, command);
     recordInput();
-    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command stopped\"}");
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command stopped\",\"command\":\"stop\"}");
+  } else if (robotCommand == RobotCommand::EmergencyStop) {
+    setCurrentCommandFromRobotCommand(robotCommand, command);
+    recordInput();
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Emergency stop activated\",\"command\":\"emergency_stop\"}");
+  } else if (robotCommand == RobotCommand::ResetEmergencyStop) {
+    setCurrentCommandFromRobotCommand(robotCommand, command);
+    recordInput();
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Emergency stop reset\",\"command\":\"reset_emergency_stop\"}");
   } else {
     setCurrentCommandFromRobotCommand(robotCommand, command);
     refreshContinuousCommandDeadline(command);
     recordInput();
     exitIdle();
-    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command executed\"}");
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Command accepted\",\"command\":\"" + jsonEscape(command) + "\"}");
   }
 }
 
@@ -1119,6 +1147,15 @@ int getFaceFpsForName(const String& faceName) {
     }
   }
   return faceFps;
+}
+
+bool isSupportedFaceName(const String& faceName) {
+  for (size_t i = 0; i < (sizeof(faceEntries) / sizeof(faceEntries[0])); i++) {
+    if (faceName.equalsIgnoreCase(faceEntries[i].name)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void updateAnimatedFace() {

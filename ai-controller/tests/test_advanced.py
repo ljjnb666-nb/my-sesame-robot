@@ -55,7 +55,7 @@ class AdvancedBehaviorPlannerTest(unittest.TestCase):
         decision = AdvancedBehaviorPlanner().plan_charging(SensorSnapshot(battery_percent=10))
 
         self.assertEqual(decision.state, ChargingIntent.WAIT_FOR_USER.value)
-        self.assertEqual(decision.command, "stop")
+        self.assertIsNone(decision.command)
 
     def test_low_battery_real_docking_requires_confirmation(self):
         planner = AdvancedBehaviorPlanner(AdvancedFeatureConfig(
@@ -65,7 +65,7 @@ class AdvancedBehaviorPlannerTest(unittest.TestCase):
 
         decision = planner.plan_charging(SensorSnapshot(battery_percent=10))
 
-        self.assertEqual(decision.command, "stop")
+        self.assertIsNone(decision.command)
         self.assertTrue(decision.requires_user_confirmation)
 
     def test_mock_auto_docking_does_not_emit_unsupported_command(self):

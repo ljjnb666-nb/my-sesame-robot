@@ -30,6 +30,20 @@ class MockRobotProtocolTest(unittest.TestCase):
         except error.HTTPError as exc:
             return exc.code, json.loads(exc.read().decode("utf-8"))
 
+    def post_bytes(self, body: bytes):
+        http_request = request.Request(
+            f"{self.server.url}/api/command",
+            data=body,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            method="POST",
+        )
+        opener = request.build_opener(request.ProxyHandler({}))
+        try:
+            with opener.open(http_request, timeout=1.0) as response:
+                return response.status, json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            return exc.code, json.loads(exc.read().decode("utf-8"))
+
     def status(self):
         with request.build_opener(request.ProxyHandler({})).open(f"{self.server.url}/api/status", timeout=1.0) as response:
             return json.loads(response.read().decode("utf-8"))
@@ -66,7 +80,39 @@ class MockRobotProtocolTest(unittest.TestCase):
 
         self.assertEqual(status_code, 200)
         self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["face"], "happy")
         self.assertEqual(self.status()["currentFace"], "happy")
+
+    def test_rejects_non_string_command(self):
+        for value in (123, ["forward"], True):
+            status_code, payload = self.post_json({"command": value})
+            self.assertEqual(status_code, 400)
+            self.assertEqual(payload["error"], "invalid_command_type")
+
+    def test_rejects_non_object_json(self):
+        for raw in ('["forward"]', '"forward"'):
+            status_code, payload = self.post_raw(raw)
+            self.assertEqual(status_code, 400)
+            self.assertEqual(payload["error"], "invalid_payload")
+
+    def test_rejects_invalid_face_values(self):
+        status_code, payload = self.post_json({"face": 7})
+        self.assertEqual(status_code, 400)
+        self.assertEqual(payload["error"], "invalid_face_type")
+
+        status_code, payload = self.post_json({"face": ""})
+        self.assertEqual(status_code, 400)
+        self.assertEqual(payload["error"], "empty_face")
+
+        status_code, payload = self.post_json({"face": "not_a_face"})
+        self.assertEqual(status_code, 400)
+        self.assertEqual(payload["error"], "unknown_face")
+
+    def test_oversized_payload_returns_413(self):
+        status_code, payload = self.post_bytes(b'{"command":"forward","padding":"' + (b"x" * 600) + b'"}')
+
+        self.assertEqual(status_code, 413)
+        self.assertEqual(payload["error"], "payload_too_large")
 
     def test_emergency_stop_rejects_normal_motion(self):
         self.post_json({"command": "emergency_stop"})
@@ -87,6 +133,7 @@ class MockRobotProtocolTest(unittest.TestCase):
 
         self.assertEqual(status_code, 200)
         self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["command"], "heartbeat")
         status = self.status()
         self.assertTrue(status["emergencyStopActive"])
         self.assertEqual(status["currentCommand"], "")
