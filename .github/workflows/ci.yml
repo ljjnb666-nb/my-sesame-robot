@@ -1,0 +1,170 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validation:
+    name: Runtime, Simulator, and Firmware
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare build metadata
+        run: |
+          $ShortSha = $env:GITHUB_SHA.Substring(0, 7)
+          "SHORT_SHA=$ShortSha" | Out-File -FilePath $env:GITHUB_ENV -Append
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: ai-controller/pyproject.toml
+
+      - name: Repository hygiene
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
+            $Range = "${{ github.event.pull_request.base.sha }}...${{ github.sha }}"
+          } elseif ($env:GITHUB_EVENT_NAME -eq "push" -and "${{ github.event.before }}" -notmatch "^0+$") {
+            $Range = "${{ github.event.before }}...${{ github.sha }}"
+          } elseif (git rev-parse HEAD~1 2>$null) {
+            $Range = "HEAD~1...HEAD"
+          } else {
+            $Range = "HEAD"
+          }
+
+          Write-Host "Running git diff --check $Range"
+          git diff --check $Range
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          $Forbidden = git ls-files | Select-String -Pattern '(^|/)__pycache__/|\.pyc$|^\.build/|\.log$|\.tmp$'
+          if ($Forbidden) {
+            Write-Error "Tracked generated or local-only files detected:`n$Forbidden"
+            exit 1
+          }
+
+      - name: AI and Runtime tests
+        working-directory: ai-controller
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\run-tests.ps1
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          "## AI tests`n`n- Result: PASS`n- Command: powershell -ExecutionPolicy Bypass -File .\run-tests.ps1`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Firmware size parser tests
+        run: |
+          python -m unittest discover -s scripts/tests
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          "## Firmware size parser tests`n`n- Result: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Runtime CLI dry-runs
+        working-directory: ai-controller
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 runtime-step --mode mock --dry-run
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 runtime-run --mode simulator --steps 3 --dry-run
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -ExecutionPolicy Bypass -File .\run-cli.ps1 runtime-confirmation-demo --mode mock --dry-run
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "## Runtime CLI dry-runs`n`n- runtime-step: PASS`n- runtime-run: PASS`n- runtime-confirmation-demo: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Simulator scenarios
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\simulator\run-scenarios.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -ExecutionPolicy Bypass -File .\simulator\run-advanced-scenarios.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -ExecutionPolicy Bypass -File .\simulator\run-integrated-scenarios.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "## Simulator scenarios`n`n- Normal: PASS`n- Advanced: PASS`n- Integrated: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Python syntax validation
+        run: |
+          python -m compileall ai-controller simulator scripts
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          "## Python syntax validation`n`n- Result: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.5.1"
+
+      - name: Cache Arduino packages and libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\Arduino15
+            ~\Documents\Arduino\libraries
+          key: arduino-windows-cli-1.5.1-esp32-3.3.10-libs-esp32servo-3.0.9-ssd1306-2.5.17-gfx-1.12.6-json-6.21.5
+          restore-keys: |
+            arduino-windows-cli-1.5.1-esp32-3.3.10-
+
+      - name: Install ESP32 board core
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.10
+
+      - name: Firmware build
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\firmware-build.ps1 2>&1 | Tee-Object -FilePath artifacts\firmware-build.log
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Firmware size guard
+        run: |
+          python .\scripts\check_firmware_size.py `
+            --build-log artifacts\firmware-build.log `
+            --flash-warning-percent 88 `
+            --flash-failure-percent 92 `
+            --summary-file artifacts\firmware-size.md
+          $SizeExitCode = $LASTEXITCODE
+          Get-Content artifacts\firmware-size.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          if ($SizeExitCode -eq 2) {
+            exit 2
+          }
+          if ($SizeExitCode -eq 1) {
+            Write-Warning "Firmware flash usage is above the warning threshold."
+          }
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sesame-firmware-${{ env.SHORT_SHA }}-ci
+          path: |
+            .build/output/*
+            artifacts/firmware-build.log
+            artifacts/firmware-size.md
+          if-no-files-found: error
+          retention-days: 14
