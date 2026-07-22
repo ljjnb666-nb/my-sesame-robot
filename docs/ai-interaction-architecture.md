@@ -42,4 +42,3 @@ Supported action namespaces:
 - `deny`
 
 Default runtime mode is `simulator`. Real hardware mode is rejected by `AIInteractionLoop`.
-

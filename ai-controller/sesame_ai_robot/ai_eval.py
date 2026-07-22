@@ -67,4 +67,3 @@ def run_eval_case(case: dict[str, Any]) -> dict[str, Any]:
         "failures": failures,
         "actual": actual,
     }
-

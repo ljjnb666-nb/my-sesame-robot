@@ -27,4 +27,3 @@ The eval runner uses `DeterministicMockProvider` and the real `AIInteractionLoop
 Every case includes user input, initial simulator state, mock provider result, expected intent/action, confirmation expectation, execution expectation, hardware change expectation, and expected error code.
 
 Current V0 intentionally supports a single action per turn. Oversized plans, recursive-style requests, and loop requests fail closed.
-

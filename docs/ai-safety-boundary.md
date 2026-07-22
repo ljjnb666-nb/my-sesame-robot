@@ -34,4 +34,3 @@ Covered states:
 ## Hardware Status
 
 The current AI loop is simulator-only. The real hardware adapter remains a stub and is not opened by this feature.
-

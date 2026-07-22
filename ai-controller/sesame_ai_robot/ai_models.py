@@ -132,4 +132,3 @@ class RobotReply:
     confirmation_id: str | None = None
     confirmation_fingerprint: str | None = None
     structured: dict[str, Any] | None = None
-

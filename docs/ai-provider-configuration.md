@@ -25,4 +25,3 @@ Use `.env.example` as a template only. Do not commit `.env`.
 `OpenAICompatibleProvider` reads base URL, API key, model, timeout, and output budget from environment variables. It maps authentication, rate limit, network, timeout, and malformed response failures into provider errors without logging API keys or authorization headers.
 
 If a real provider is not configured, the system keeps using mock. CI must not require secrets or call external AI services.
-
