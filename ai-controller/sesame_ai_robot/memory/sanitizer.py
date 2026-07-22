@@ -24,7 +24,11 @@ FORBIDDEN_MEMORY_FIELDS = {
 }
 FORBIDDEN_TEXT_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_\-]{8,}\b"),
-    re.compile(r"\b(api[_-]?key|token|password|confirmation[_-]?id)\s*[:=]\s*\S+", re.IGNORECASE),
+    re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{8,}\b"),
+    re.compile(r"\bAuthorization\s*:\s*Bearer\s+\S+", re.IGNORECASE),
+    re.compile(r"\bBearer\s+[A-Za-z0-9._\-]{8,}\b", re.IGNORECASE),
+    re.compile(r"\b(api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|confirmation[\s_-]?id)\s*[:=]\s*\S+", re.IGNORECASE),
+    re.compile(r"\bconfirmation[\s_-]?id\s+[A-Za-z0-9._\-]{4,}\b", re.IGNORECASE),
     re.compile(r"\b(system\s+prompt|safety\s+override|bypass\s+arbiter|skip\s+arbiter)\b", re.IGNORECASE),
 )
 MAX_MEMORY_STRING_CHARS = 500

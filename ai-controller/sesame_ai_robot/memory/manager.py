@@ -190,6 +190,8 @@ class MemoryManager:
         self.short_term = short_term or ShortTermMemory()
         self.long_term = long_term or LongTermMemory()
         self.last_persistence_error: str | None = None
+        self.last_load_error: str | None = None
+        self.quarantined_path: Path | None = None
         self._load()
 
     def store(self, scope: str, key: str, value: Any) -> None:
@@ -232,12 +234,53 @@ class MemoryManager:
             return
         try:
             payload = json.loads(self.storage_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ValueError(f"memory file is not valid JSON: {self.storage_path}") from exc
+            self._validate_loaded_payload(payload)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            self._quarantine_corrupt_file(exc)
+            self.short_term = ShortTermMemory()
+            self.long_term = LongTermMemory()
+            return
+        self.short_term = ShortTermMemory.from_json(payload["short_term"])
+        self.long_term = LongTermMemory.from_json(payload["long_term"])
+
+    def _validate_loaded_payload(self, payload: Any) -> None:
         if not isinstance(payload, dict):
             raise ValueError("memory file root must be an object")
-        self.short_term = ShortTermMemory.from_json(payload.get("short_term", {}))
-        self.long_term = LongTermMemory.from_json(payload.get("long_term", {}))
+        if payload.get("version") != MEMORY_VERSION:
+            raise ValueError("memory file version is incompatible")
+        if not isinstance(payload.get("short_term"), dict):
+            raise ValueError("memory short_term section must be an object")
+        if not isinstance(payload.get("long_term"), dict):
+            raise ValueError("memory long_term section must be an object")
+        short_term = payload["short_term"]
+        long_term = payload["long_term"]
+        if not isinstance(short_term.get("conversation_context", []), list):
+            raise ValueError("memory conversation_context must be a list")
+        if not isinstance(short_term.get("task_context", {}), dict):
+            raise ValueError("memory task_context must be an object")
+        if not isinstance(long_term.get("user_preferences", {}), dict):
+            raise ValueError("memory user_preferences must be an object")
+        if not isinstance(long_term.get("robot_config", {}), dict):
+            raise ValueError("memory robot_config must be an object")
+
+    def _quarantine_corrupt_file(self, exc: Exception) -> None:
+        self.last_load_error = str(exc)
+        target = self._corrupt_path()
+        try:
+            self.storage_path.replace(target)
+            self.quarantined_path = target
+        except OSError as rename_exc:
+            self.last_persistence_error = str(rename_exc)
+
+    def _corrupt_path(self) -> Path:
+        base = self.storage_path.with_name(f"{self.storage_path.name}.corrupt")
+        if not base.exists():
+            return base
+        for index in range(1, 1000):
+            candidate = self.storage_path.with_name(f"{self.storage_path.name}.corrupt.{index}")
+            if not candidate.exists():
+                return candidate
+        return self.storage_path.with_name(f"{self.storage_path.name}.corrupt.latest")
 
     def _save(self) -> None:
         payload = {

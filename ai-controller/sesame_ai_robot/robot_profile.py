@@ -16,7 +16,9 @@ FORBIDDEN_PROFILE_KEYS = {
     "safety_severity",
     "safety_override",
     "runtime_authorized_actions",
+    "runtime_mode",
     "allow_real_robot",
+    "real_robot",
 }
 
 
@@ -93,7 +95,7 @@ def _parse_limited_yaml(text: str) -> dict[str, Any]:
     root: dict[str, Any] = {}
     current_key: str | None = None
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
-        line = raw_line.split("#", 1)[0].rstrip()
+        line = _strip_comment(raw_line).rstrip()
         if not line:
             continue
         indent = len(line) - len(line.lstrip(" "))
@@ -107,6 +109,8 @@ def _parse_limited_yaml(text: str) -> dict[str, Any]:
             key = key.strip()
             if not key:
                 raise ValueError(f"empty yaml key at line {line_number}")
+            if key in root:
+                raise ValueError(f"duplicate yaml key at line {line_number}: {key}")
             value = value.strip()
             root[key] = {} if value == "" else _parse_scalar(value)
             current_key = key if value == "" else None
@@ -130,8 +134,31 @@ def _parse_limited_yaml(text: str) -> dict[str, Any]:
         key, value = stripped.split(":", 1)
         if not key.strip():
             raise ValueError(f"empty yaml key at line {line_number}")
+        if key.strip() in existing:
+            raise ValueError(f"duplicate yaml key at line {line_number}: {key.strip()}")
         existing[key.strip()] = _parse_scalar(value.strip())
     return root
+
+
+def _strip_comment(line: str) -> str:
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char in {"'", '"'}:
+            if quote == char:
+                quote = None
+            elif quote is None:
+                quote = char
+            continue
+        if char == "#" and quote is None:
+            return line[:index]
+    return line
 
 
 def _parse_scalar(value: str) -> Any:
