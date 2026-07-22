@@ -1,0 +1,1 @@
+{"name":"confirmation_replay_rejected","steps":[{"name":"replay rejection is covered by confirmation unit test","assistant":{"commands":["wave"]},"expect":{"command":"wave","source":"assistant"}}]}

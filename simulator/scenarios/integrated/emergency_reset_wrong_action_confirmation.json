@@ -1,0 +1,1 @@
+{"name":"emergency_reset_wrong_action_confirmation","steps":[{"name":"wrong action grant does not reset","robotStatus":{"emergencyStopActive":true},"assistant":{"commands":["reset_emergency_stop"]},"confirmationGrants":[{"action":"self_righting"}],"expect":{"command":null,"requiresUserConfirmation":true}}]}

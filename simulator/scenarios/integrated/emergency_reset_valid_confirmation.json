@@ -1,0 +1,1 @@
+{"name":"emergency_reset_valid_confirmation","steps":[{"name":"confirmed reset is allowed","robotStatus":{"emergencyStopActive":true},"assistant":{"commands":["reset_emergency_stop"]},"confirmationGrants":[{"action":"reset_emergency_stop"}],"expect":{"command":"reset_emergency_stop","source":"assistant"}}]}

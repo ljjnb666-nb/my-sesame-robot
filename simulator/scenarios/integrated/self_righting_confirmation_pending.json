@@ -1,0 +1,1 @@
+{"name":"self_righting_confirmation_pending","config":{"runtimeMode":"real_robot","allowSelfRighting":true},"steps":[{"name":"real self-righting waits","posture":"fallen","expect":{"command":null,"requiresUserConfirmation":true,"confirmationAction":"self_righting"}}]}

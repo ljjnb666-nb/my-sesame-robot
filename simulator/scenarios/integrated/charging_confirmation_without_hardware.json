@@ -1,0 +1,1 @@
+{"name":"charging_confirmation_without_hardware","config":{"runtimeMode":"real_robot","allowAutoDocking":true},"steps":[{"name":"low battery docking has no firmware command","sensor":{"batteryPercent":10},"userConfirmedActions":["charging_dock"],"expect":{"command":"stop","source":"safety"}}]}

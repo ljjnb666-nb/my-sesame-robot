@@ -16,6 +16,7 @@ if str(AI_CONTROLLER) not in sys.path:
 from sesame_ai_robot.advanced import AdvancedBehaviorPlanner, AdvancedFeatureConfig, PostureState, RuntimeMode
 from sesame_ai_robot.arbiter import ArbiterInput, BehaviorArbiter
 from sesame_ai_robot.assistant import AssistantAction, AssistantPlan, AssistantStep
+from sesame_ai_robot.confirmation import ConfirmationGrant
 from sesame_ai_robot.detection import BoundingBox, Detection, DetectionResult
 from sesame_ai_robot.face_identity import FaceIdentity, FaceRecognitionResult
 from sesame_ai_robot.safety import SafetyMonitor, SensorSnapshot
@@ -76,6 +77,11 @@ def run_integrated_scenario(path: Path) -> IntegratedScenarioResult:
             advanced=advanced,
             assistant=assistant,
             runtime_mode=runtime_mode,
+            user_confirmed_actions=tuple(step.get("userConfirmedActions", [])),
+            confirmation_grants=tuple(
+                ConfirmationGrant(str(grant.get("id", "scenario")), str(grant["action"]), 0.0, str(grant.get("contextToken", "")))
+                for grant in step.get("confirmationGrants", [])
+            ),
         ))
         payload = {
             "command": plan.command,
@@ -85,6 +91,11 @@ def run_integrated_scenario(path: Path) -> IntegratedScenarioResult:
             "reason": plan.reason,
             "requiresUserConfirmation": plan.requires_user_confirmation,
             "blockedActions": list(plan.blocked_actions),
+            "rejectedActions": [
+                {"command": action.command, "source": action.source, "reason": action.reason}
+                for action in plan.rejected_actions
+            ],
+            "confirmationAction": plan.confirmation_request.action if plan.confirmation_request else None,
             "trackingState": tracking_decision.state.value,
             "trackingCommand": tracking_decision.command,
         }
@@ -95,6 +106,9 @@ def run_integrated_scenario(path: Path) -> IntegratedScenarioResult:
         for blocked in step.get("expectBlockedActions", []):
             if blocked not in payload["blockedActions"]:
                 failures.append(f"{label}: expected blocked action {blocked!r}, got {payload['blockedActions']!r}")
+        for rejected in step.get("expectRejectedActions", []):
+            if rejected not in payload["blockedActions"]:
+                failures.append(f"{label}: expected rejected action {rejected!r}, got {payload['blockedActions']!r}")
 
     return IntegratedScenarioResult(path, not failures, tuple(failures))
 

@@ -1,0 +1,1 @@
+{"name":"emergency_reset_requires_confirmation","steps":[{"name":"reset waits for confirmation","robotStatus":{"emergencyStopActive":true},"assistant":{"commands":["reset_emergency_stop"]},"expect":{"command":null,"requiresUserConfirmation":true,"confirmationAction":"reset_emergency_stop"}}]}

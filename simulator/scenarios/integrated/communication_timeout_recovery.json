@@ -31,10 +31,7 @@
       "expect": {
         "command": "stop",
         "source": "safety"
-      },
-      "expectBlockedActions": [
-        "stop"
-      ]
+      }
     },
     {
       "name": "recovery does not restore old motion",

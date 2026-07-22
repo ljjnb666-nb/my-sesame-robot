@@ -1,0 +1,1 @@
+{"name":"emergency_reset_sensor_still_unsafe","steps":[{"name":"unsafe sensor blocks reset","robotStatus":{"emergencyStopActive":true},"sensor":{"collisionDetected":true},"assistant":{"commands":["reset_emergency_stop"]},"confirmationGrants":[{"action":"reset_emergency_stop"}],"expect":{"command":null,"source":"safety"}}]}

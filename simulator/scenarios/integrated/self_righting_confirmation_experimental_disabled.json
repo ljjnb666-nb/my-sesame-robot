@@ -1,0 +1,1 @@
+{"name":"self_righting_confirmation_experimental_disabled","config":{"runtimeMode":"real_robot","allowSelfRighting":true},"steps":[{"name":"confirmed self-righting still has no default command","posture":"fallen","userConfirmedActions":["self_righting"],"expect":{"command":null,"source":"advanced"}}]}
