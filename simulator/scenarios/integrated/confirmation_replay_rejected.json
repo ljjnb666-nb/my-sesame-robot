@@ -1,1 +1,44 @@
-{"name":"confirmation_replay_rejected","steps":[{"name":"replay rejection is covered by confirmation unit test","assistant":{"commands":["wave"]},"expect":{"command":"wave","source":"assistant"}}]}
+{
+  "name": "confirmation_replay_rejected",
+  "runtimeFlow": true,
+  "config": {
+    "initialRobotStatus": {
+      "emergencyStopActive": true
+    }
+  },
+  "steps": [
+    {
+      "name": "request reset confirmation",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "expect": {
+        "confirmationState": "requested"
+      }
+    },
+    {
+      "name": "consume id",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "submitConfirmation": "last",
+      "expect": {
+        "confirmationState": "accepted"
+      }
+    },
+    {
+      "name": "replay id",
+      "robotStatus": {
+        "emergencyStopActive": true
+      },
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "submitConfirmation": "last",
+      "expect": {
+        "command": null,
+        "confirmationState": "already_used"
+      }
+    }
+  ]
+}

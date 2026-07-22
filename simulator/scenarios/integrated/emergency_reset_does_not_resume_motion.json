@@ -1,1 +1,34 @@
-{"name":"emergency_reset_does_not_resume_motion","steps":[{"name":"reset emits only reset command","robotStatus":{"emergencyStopActive":true,"currentCommand":"forward"},"assistant":{"commands":["reset_emergency_stop"]},"confirmationGrants":[{"action":"reset_emergency_stop"}],"expect":{"command":"reset_emergency_stop","source":"assistant"}}]}
+{
+  "name": "emergency_reset_does_not_resume_motion",
+  "runtimeFlow": true,
+  "config": {
+    "dryRun": false,
+    "initialRobotStatus": {
+      "emergencyStopActive": true,
+      "currentCommand": "forward"
+    }
+  },
+  "steps": [
+    {
+      "name": "request reset confirmation",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "expect": {
+        "confirmationState": "requested"
+      }
+    },
+    {
+      "name": "confirmed reset does not resume forward",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "submitConfirmation": "last",
+      "expect": {
+        "command": "reset_emergency_stop",
+        "confirmationState": "accepted",
+        "currentCommand": ""
+      }
+    }
+  ]
+}

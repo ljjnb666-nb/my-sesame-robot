@@ -1,1 +1,33 @@
-{"name":"emergency_reset_wrong_action_confirmation","steps":[{"name":"wrong action grant does not reset","robotStatus":{"emergencyStopActive":true},"assistant":{"commands":["reset_emergency_stop"]},"confirmationGrants":[{"action":"self_righting"}],"expect":{"command":null,"requiresUserConfirmation":true}}]}
+{
+  "name": "emergency_reset_wrong_action_confirmation",
+  "runtimeFlow": true,
+  "config": {
+    "initialRobotStatus": {
+      "emergencyStopActive": true
+    }
+  },
+  "steps": [
+    {
+      "name": "request reset confirmation",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "expect": {
+        "confirmationState": "requested"
+      }
+    },
+    {
+      "name": "submit as wrong action",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "submitConfirmation": "last",
+      "confirmationAction": "self_righting",
+      "expect": {
+        "command": null,
+        "confirmationState": "action_mismatch",
+        "sentCommand": false
+      }
+    }
+  ]
+}

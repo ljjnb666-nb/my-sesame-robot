@@ -3,7 +3,6 @@ import unittest
 from sesame_ai_robot.advanced import AdvancedDecision, AdvancedFeature, RuntimeMode
 from sesame_ai_robot.arbiter import ArbiterInput, BehaviorArbiter
 from sesame_ai_robot.assistant import AssistantAction, AssistantPlan, AssistantStep
-from sesame_ai_robot.confirmation import ConfirmationGrant
 from sesame_ai_robot.safety import SafetyAssessment, SafetySeverity
 from sesame_ai_robot.tracking import TrackingDecision, TrackingState
 
@@ -38,7 +37,7 @@ class BehaviorArbiterTest(unittest.TestCase):
 
         self.assertIsNone(plan.command)
         self.assertTrue(plan.requires_user_confirmation)
-        self.assertEqual(plan.confirmation_request.action, "reset_emergency_stop")
+        self.assertEqual(plan.confirmation_requirement.action, "reset_emergency_stop")
 
     def test_emergency_reset_with_confirmation_is_allowed(self):
         assistant = AssistantPlan("reset", (
@@ -49,11 +48,27 @@ class BehaviorArbiterTest(unittest.TestCase):
             robot_status={"emergencyStopActive": True},
             safety=ok_safety(),
             assistant=assistant,
-            confirmation_grants=(ConfirmationGrant("id", "reset_emergency_stop", 1.0, "token"),),
+            runtime_authorized_actions=("reset_emergency_stop",),
         ))
 
         self.assertEqual(plan.command, "reset_emergency_stop")
         self.assertEqual(plan.source, "assistant")
+
+    def test_user_confirmed_actions_string_bypass_is_removed(self):
+        with self.assertRaises(TypeError):
+            ArbiterInput(
+                robot_status={"emergencyStopActive": True},
+                safety=ok_safety(),
+                user_confirmed_actions=("reset_emergency_stop",),
+            )
+
+    def test_external_confirmation_grants_are_not_accepted(self):
+        with self.assertRaises(TypeError):
+            ArbiterInput(
+                robot_status={"emergencyStopActive": True},
+                safety=ok_safety(),
+                confirmation_grants=(),
+            )
 
     def test_safety_emergency_stop_overrides_tracking(self):
         plan = BehaviorArbiter().decide(ArbiterInput(
@@ -96,6 +111,7 @@ class BehaviorArbiterTest(unittest.TestCase):
 
         self.assertIsNone(plan.command)
         self.assertTrue(plan.requires_user_confirmation)
+        self.assertEqual(plan.confirmation_requirement.action, "self_righting")
 
     def test_tracking_wins_before_assistant_motion(self):
         assistant = AssistantPlan("go", (

@@ -16,10 +16,14 @@ if str(AI_CONTROLLER) not in sys.path:
 from sesame_ai_robot.advanced import AdvancedBehaviorPlanner, AdvancedFeatureConfig, PostureState, RuntimeMode
 from sesame_ai_robot.arbiter import ArbiterInput, BehaviorArbiter
 from sesame_ai_robot.assistant import AssistantAction, AssistantPlan, AssistantStep
-from sesame_ai_robot.confirmation import ConfirmationGrant
+from sesame_ai_robot.client import RobotClient
+from sesame_ai_robot.config import ControllerConfig
 from sesame_ai_robot.detection import BoundingBox, Detection, DetectionResult
 from sesame_ai_robot.face_identity import FaceIdentity, FaceRecognitionResult
-from sesame_ai_robot.safety import SafetyMonitor, SensorSnapshot
+from sesame_ai_robot.confirmation import ConfirmationStore
+from sesame_ai_robot.mock_robot import MockRobotServer, MockRobotState
+from sesame_ai_robot.runtime import RobotRuntime, RobotRuntimeConfig
+from sesame_ai_robot.safety import SafetyConfig, SafetyMonitor, SensorSnapshot
 from sesame_ai_robot.tracking import TrackingConfig, TrackingController
 
 
@@ -42,6 +46,8 @@ def discover_integrated_scenarios(paths: list[Path]) -> list[Path]:
 
 def run_integrated_scenario(path: Path) -> IntegratedScenarioResult:
     scenario = json.loads(path.read_text(encoding="utf-8"))
+    if bool(scenario.get("runtimeFlow", False)):
+        return _run_runtime_flow_scenario(path, scenario)
     config = scenario.get("config", {})
     runtime_mode = RuntimeMode(str(config.get("runtimeMode", RuntimeMode.MOCK.value)))
     tracking = TrackingController(TrackingConfig(allow_following=bool(config.get("allowFollowing", False))))
@@ -77,11 +83,6 @@ def run_integrated_scenario(path: Path) -> IntegratedScenarioResult:
             advanced=advanced,
             assistant=assistant,
             runtime_mode=runtime_mode,
-            user_confirmed_actions=tuple(step.get("userConfirmedActions", [])),
-            confirmation_grants=tuple(
-                ConfirmationGrant(str(grant.get("id", "scenario")), str(grant["action"]), 0.0, str(grant.get("contextToken", "")))
-                for grant in step.get("confirmationGrants", [])
-            ),
         ))
         payload = {
             "command": plan.command,
@@ -95,7 +96,13 @@ def run_integrated_scenario(path: Path) -> IntegratedScenarioResult:
                 {"command": action.command, "source": action.source, "reason": action.reason}
                 for action in plan.rejected_actions
             ],
-            "confirmationAction": plan.confirmation_request.action if plan.confirmation_request else None,
+            "confirmationAction": (
+                plan.confirmation_request.action
+                if plan.confirmation_request
+                else plan.confirmation_requirement.action
+                if plan.confirmation_requirement
+                else None
+            ),
             "trackingState": tracking_decision.state.value,
             "trackingCommand": tracking_decision.command,
         }
@@ -111,6 +118,138 @@ def run_integrated_scenario(path: Path) -> IntegratedScenarioResult:
                 failures.append(f"{label}: expected rejected action {rejected!r}, got {payload['blockedActions']!r}")
 
     return IntegratedScenarioResult(path, not failures, tuple(failures))
+
+
+def _run_runtime_flow_scenario(path: Path, scenario: dict[str, Any]) -> IntegratedScenarioResult:
+    config = scenario.get("config", {})
+    runtime_mode = RuntimeMode(str(config.get("runtimeMode", RuntimeMode.MOCK.value)))
+    state = MockRobotState()
+    _apply_status(state, config.get("initialRobotStatus", {}))
+    _apply_sensor(state, config.get("initialSensor", {}))
+    server = MockRobotServer(port=0, state=state)
+    server.start()
+    failures: list[str] = []
+    last_confirmation_id: str | None = None
+    try:
+        client = RobotClient(ControllerConfig(robot_url=server.url, request_timeout_s=1.0))
+        advanced_planner = AdvancedBehaviorPlanner(AdvancedFeatureConfig(
+            runtime_mode=runtime_mode,
+            allow_self_righting=bool(config.get("allowSelfRighting", False)),
+            allow_experimental_self_righting_command=bool(config.get("allowExperimentalSelfRightingCommand", False)),
+            allow_auto_docking=bool(config.get("allowAutoDocking", False)),
+        ))
+        if bool(config.get("forceSelfRightingPosture", False)):
+            advanced_planner = ScenarioSelfRightingPlanner(advanced_planner.config)
+        runtime = RobotRuntime(
+            client,
+            RobotRuntimeConfig(
+                runtime_mode=runtime_mode,
+                dry_run=bool(config.get("dryRun", True)),
+                allow_real_robot=bool(config.get("allowRealRobot", False)),
+            ),
+            safety_monitor=SafetyMonitor(SafetyConfig(
+                max_tilt_deg=float(config.get("maxSafetyTiltDeg", SafetyConfig().max_tilt_deg)),
+            )),
+            advanced_planner=advanced_planner,
+            confirmation_store=ConfirmationStore(float(config.get("confirmationTtlSeconds", 60.0))),
+        )
+        tracking = TrackingController(TrackingConfig(allow_following=bool(config.get("allowFollowing", False))))
+        for index, step in enumerate(scenario.get("steps", []), start=1):
+            label = step.get("name", f"step {index}")
+            _apply_status(state, step.get("robotStatus", {}))
+            _apply_sensor(state, step.get("sensor", {}))
+            status = state.as_status()
+            tracking_decision = tracking.update(
+                _detections(step.get("target", {})),
+                _identity(bool(step.get("identityConfirmed", False))),
+                status,
+            )
+            assistant = _assistant_plan(step.get("assistant", {}))
+            submitted = step.get("submitConfirmation")
+            confirmation_id = None
+            if submitted == "last":
+                confirmation_id = last_confirmation_id
+            elif isinstance(submitted, str):
+                confirmation_id = submitted
+            result = runtime.step(
+                tracking=tracking_decision,
+                assistant=assistant,
+                confirmation_id=confirmation_id,
+                confirmation_action=step.get("confirmationAction"),
+            )
+            if result.plan.confirmation_request is not None:
+                last_confirmation_id = result.plan.confirmation_request.confirmation_id
+            payload = {
+                "command": result.plan.command,
+                "face": result.plan.face,
+                "speech": result.plan.speech,
+                "source": result.plan.source,
+                "reason": result.plan.reason,
+                "requiresUserConfirmation": result.plan.requires_user_confirmation,
+                "confirmationAction": result.plan.confirmation_request.action if result.plan.confirmation_request else None,
+                "confirmationState": result.confirmation_state,
+                "confirmationError": result.confirmation_error,
+                "sentCommand": result.sent_command,
+                "currentCommand": state.current_command,
+                "emergencyStopActive": state.emergency_stop_active,
+                "trackingState": tracking_decision.state.value,
+                "trackingCommand": tracking_decision.command,
+            }
+            for key, expected in step.get("expect", {}).items():
+                actual = payload.get(key)
+                if actual != expected:
+                    failures.append(f"{label}: expected {key}={expected!r}, got {actual!r}")
+    finally:
+        server.stop()
+    return IntegratedScenarioResult(path, not failures, tuple(failures))
+
+
+def _apply_status(state: MockRobotState, status: dict[str, Any]) -> None:
+    if "emergencyStopActive" in status:
+        state.emergency_stop_active = bool(status["emergencyStopActive"])
+    if "communicationTimedOut" in status:
+        state.communication_timed_out = bool(status["communicationTimedOut"])
+    if "currentCommand" in status:
+        state.current_command = str(status["currentCommand"])
+
+
+def _apply_sensor(state: MockRobotState, sensor: dict[str, Any]) -> None:
+    if "batteryPercent" in sensor:
+        state.virtual_battery_percent = int(sensor["batteryPercent"])
+    mapping = {
+        "frontDistanceM": float,
+        "leftDistanceM": float,
+        "rightDistanceM": float,
+        "imuRollDeg": float,
+        "imuPitchDeg": float,
+        "cliffDetected": bool,
+        "collisionDetected": bool,
+    }
+    for key, converter in mapping.items():
+        if key in sensor:
+            state.virtual_sensors[key] = converter(sensor[key])
+
+
+class ScenarioSelfRightingPlanner(AdvancedBehaviorPlanner):
+    def assess_posture(self, snapshot: SensorSnapshot):
+        from sesame_ai_robot.advanced import AdvancedDecision, AdvancedFeature, PostureState
+
+        return AdvancedDecision(
+            AdvancedFeature.FALL_DETECTION,
+            PostureState.FALLEN.value,
+            None,
+            "scenario forces fallen posture without emergency-stop command",
+        )
+
+    def assess_terrain(self, snapshot: SensorSnapshot):
+        from sesame_ai_robot.advanced import AdvancedDecision, AdvancedFeature, TerrainState
+
+        return AdvancedDecision(
+            AdvancedFeature.TERRAIN_ADAPTATION,
+            TerrainState.LEVEL.value,
+            None,
+            "scenario keeps terrain level for self-righting confirmation",
+        )
 
 
 def _robot_status(base: dict[str, Any], sensor: dict[str, Any]) -> dict[str, Any]:

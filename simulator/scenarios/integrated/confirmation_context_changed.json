@@ -1,1 +1,34 @@
-{"name":"confirmation_context_changed","steps":[{"name":"context change rejection is covered by confirmation unit test","expect":{"command":null,"source":"idle"}}]}
+{
+  "name": "confirmation_context_changed",
+  "runtimeFlow": true,
+  "config": {
+    "initialRobotStatus": {
+      "emergencyStopActive": true
+    }
+  },
+  "steps": [
+    {
+      "name": "request reset confirmation",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "expect": {
+        "confirmationState": "requested"
+      }
+    },
+    {
+      "name": "emergency state changes before submit",
+      "robotStatus": {
+        "emergencyStopActive": false
+      },
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "submitConfirmation": "last",
+      "expect": {
+        "command": null,
+        "confirmationState": "context_changed"
+      }
+    }
+  ]
+}

@@ -1,1 +1,54 @@
-{"name":"emergency_reset_valid_confirmation","steps":[{"name":"confirmed reset is allowed","robotStatus":{"emergencyStopActive":true},"assistant":{"commands":["reset_emergency_stop"]},"confirmationGrants":[{"action":"reset_emergency_stop"}],"expect":{"command":"reset_emergency_stop","source":"assistant"}}]}
+{
+  "name": "emergency_reset_valid_confirmation",
+  "runtimeFlow": true,
+  "config": {
+    "dryRun": false,
+    "initialRobotStatus": {
+      "emergencyStopActive": true
+    }
+  },
+  "steps": [
+    {
+      "name": "request reset confirmation",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "expect": {
+        "command": null,
+        "requiresUserConfirmation": true,
+        "confirmationAction": "reset_emergency_stop",
+        "confirmationState": "requested",
+        "sentCommand": false
+      }
+    },
+    {
+      "name": "submit valid id",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "submitConfirmation": "last",
+      "expect": {
+        "command": "reset_emergency_stop",
+        "source": "assistant",
+        "confirmationState": "accepted",
+        "sentCommand": true,
+        "currentCommand": ""
+      }
+    },
+    {
+      "name": "replay same id",
+      "robotStatus": {
+        "emergencyStopActive": true
+      },
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "submitConfirmation": "last",
+      "expect": {
+        "command": null,
+        "confirmationState": "already_used",
+        "sentCommand": false
+      }
+    }
+  ]
+}

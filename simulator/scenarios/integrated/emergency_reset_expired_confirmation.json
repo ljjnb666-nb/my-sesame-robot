@@ -1,1 +1,33 @@
-{"name":"emergency_reset_expired_confirmation","steps":[{"name":"expired grants are rejected by confirmation store tests","robotStatus":{"emergencyStopActive":true},"assistant":{"commands":["reset_emergency_stop"]},"expect":{"command":null,"requiresUserConfirmation":true}}]}
+{
+  "name": "emergency_reset_expired_confirmation",
+  "runtimeFlow": true,
+  "config": {
+    "confirmationTtlSeconds": -1,
+    "initialRobotStatus": {
+      "emergencyStopActive": true
+    }
+  },
+  "steps": [
+    {
+      "name": "request reset confirmation",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "expect": {
+        "confirmationState": "requested"
+      }
+    },
+    {
+      "name": "submit expired id",
+      "assistant": {
+        "commands": ["reset_emergency_stop"]
+      },
+      "submitConfirmation": "last",
+      "expect": {
+        "command": null,
+        "confirmationState": "expired",
+        "sentCommand": false
+      }
+    }
+  ]
+}
