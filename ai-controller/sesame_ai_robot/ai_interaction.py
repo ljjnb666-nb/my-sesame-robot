@@ -31,10 +31,11 @@ from .ai_models import (
     RobotReply,
 )
 from .ai_provider import AIProvider, provider_from_env
-from .assistant import AssistantAction, AssistantPlan, AssistantStep
 from .confirmation import ConfirmationStore
 from .memory import MemoryManager
-from .runtime import RobotRuntime, RobotRuntimeConfig, result_to_jsonable
+from .runtime import RobotRuntime, RobotRuntimeConfig
+from .tools import RobotReadOnlyFacade, ToolExecutor, ToolRegistry, create_builtin_registry
+from .tools.models import ToolResult
 from .virtual_hardware import HardwareDispatchError, HardwareSafetyError, SimulatorHardwareAdapter, VirtualHardwareRobotClient
 
 
@@ -124,6 +125,9 @@ class AIInteractionLoop:
         hardware: SimulatorHardwareAdapter | None = None,
         confirmation_store: ConfirmationStore | None = None,
         memory_manager: MemoryManager | None = None,
+        tool_registry: ToolRegistry | None = None,
+        tool_executor: ToolExecutor | None = None,
+        read_only_facade: RobotReadOnlyFacade | None = None,
         max_actions: int = MAX_ACTIONS_DEFAULT,
     ) -> None:
         if runtime_mode == RuntimeMode.REAL_ROBOT:
@@ -143,6 +147,13 @@ class AIInteractionLoop:
         self.max_actions = max_actions
         self.memory = ConversationMemory(session_id=f"session_{uuid.uuid4().hex[:12]}")
         self.memory_manager = memory_manager or MemoryManager()
+        self.tool_registry = tool_registry or create_builtin_registry()
+        self.read_only_facade = read_only_facade or RobotReadOnlyFacade(client=self.client, hardware=self.hardware)
+        self.tool_executor = tool_executor or ToolExecutor(
+            registry=self.tool_registry,
+            read_only=self.read_only_facade,
+            runtime=self.runtime,
+        )
         self.events: list[dict[str, Any]] = []
 
     def reset_session(self) -> None:
@@ -235,53 +246,62 @@ class AIInteractionLoop:
         if action.action == "deny":
             return ExecutionResult(action.action, "failed", AIErrorCode.PLAN_REJECTED, "denied", user_message="动作未执行：该请求会绕过安全边界或使用不存在的能力。")
         if action.action == "query_status":
-            self._event("action_dispatched", None, action.action, "ok")
-            message, details = self._query_status(str(action.arguments.get("query", "summary")))
-            self._event("action_completed", None, action.action, "ok")
+            self._event("tool_dispatched", None, action.action, "ok")
+            tool_result = self.tool_executor.execute(_tool_call_from_action(action))
+            if tool_result.status != "ok":
+                self._event("tool_failed", None, action.action, tool_result.error_code or "failed")
+                return ExecutionResult(action.action, "failed", AIErrorCode.PLAN_REJECTED, tool_result.error_code, user_message="动作未执行：工具调用未通过校验。")
+            self._event("tool_completed", None, action.action, "ok")
+            message, details = _query_message(str(action.arguments.get("query", "summary")), tool_result.result or {})
             return ExecutionResult(action.action, "ok", None, None, user_message=message, diagnostics=details)
         if action.action == "robot_command":
             command = str(action.arguments["command"])
-            assistant = AssistantPlan(
-                transcript=command,
-                steps=(AssistantStep(AssistantAction.ROBOT_COMMAND, command, "AI structured intent"),),
-            )
-            result = self.runtime.step(assistant=assistant, confirmation_id=confirmation_id)
-            payload = result_to_jsonable(result, self.runtime.config)
-            if result.confirmation_state == "requested":
-                request_obj = result.plan.confirmation_request
-                self.memory.pending_confirmation_fingerprint = _fingerprint(request_obj.confirmation_id if request_obj else None)
+            self._event("tool_dispatched", None, command, "ok")
+            tool_result = self.tool_executor.execute(_tool_call_from_action(action), confirmation_id=confirmation_id)
+            runtime_payload = _runtime_payload(tool_result)
+            if tool_result.status == "confirmation_required":
+                request_id = (tool_result.result or {}).get("confirmation_id")
+                self.memory.pending_confirmation_fingerprint = _fingerprint(request_id if isinstance(request_id, str) else None)
                 self._event("confirmation_required", None, command, "confirmation_required", confirmation_fingerprint=self.memory.pending_confirmation_fingerprint)
                 return ExecutionResult(
                     command,
                     "confirmation_required",
                     AIErrorCode.CONFIRMATION_REQUIRED,
-                    result.plan.reason,
+                    tool_result.user_message,
                     confirmation_state="requested",
-                    user_message=f"该虚拟机器人动作需要确认。原因：{result.plan.reason}",
-                    diagnostics={"runtime": payload, "confirmation_id": request_obj.confirmation_id if request_obj else None},
+                    user_message=tool_result.user_message,
+                    diagnostics={"runtime": runtime_payload, "confirmation_id": request_id if isinstance(request_id, str) else None},
                 )
-            if result.confirmation_state not in {"none", "accepted"}:
-                self._event("action_failed", None, command, result.confirmation_state)
+            if tool_result.status == "failed" and tool_result.error_code in {"already_used", "action_mismatch", "context_changed", "expired", "unknown_id"}:
+                self._event("action_failed", None, command, tool_result.error_code)
                 return ExecutionResult(
                     command,
                     "failed",
                     AIErrorCode.EXECUTION_FAILED,
-                    result.confirmation_error,
-                    confirmation_state=result.confirmation_state,
-                    user_message=f"动作未执行：confirmation 状态为 {result.confirmation_state}。",
-                    diagnostics={"runtime": payload},
+                    tool_result.error_code,
+                    confirmation_state=tool_result.error_code or "failed",
+                    user_message=tool_result.user_message,
+                    diagnostics={"runtime": runtime_payload},
                 )
-            if result.sent_command:
-                if result.plan.command != command:
-                    self._event("action_failed", None, command, result.plan.source)
+            if tool_result.status == "ok":
+                if not runtime_payload.get("executed", {}).get("commandSent", False):
                     return ExecutionResult(
                         command,
                         "failed",
                         AIErrorCode.EXECUTION_FAILED,
-                        result.plan.reason,
-                        confirmation_state=result.confirmation_state,
-                        user_message=f"动作未执行：安全层选择了 {result.plan.command}，原因：{result.plan.reason}",
-                        diagnostics={"runtime": payload, "hardware": self.hardware.state.snapshot()},
+                        "not executed",
+                        user_message=tool_result.user_message,
+                        diagnostics={"runtime": runtime_payload},
+                    )
+                if runtime_payload.get("plan", {}).get("command") != command:
+                    self._event("action_failed", None, command, str(runtime_payload.get("plan", {}).get("source")))
+                    return ExecutionResult(
+                        command,
+                        "failed",
+                        AIErrorCode.EXECUTION_FAILED,
+                        str(runtime_payload.get("plan", {}).get("reason")),
+                        user_message=tool_result.user_message,
+                        diagnostics={"runtime": runtime_payload, "hardware": self.hardware.state.snapshot()},
                     )
                 self._event("action_dispatched", None, command, "ok")
                 self._event("action_completed", None, command, "ok")
@@ -290,18 +310,16 @@ class AIInteractionLoop:
                     "ok",
                     None,
                     None,
-                    confirmation_state=result.confirmation_state,
                     user_message=f"模拟器已执行虚拟机器人动作：{command}。",
-                    diagnostics={"runtime": payload, "hardware": self.hardware.state.snapshot()},
+                    diagnostics={"runtime": runtime_payload, "hardware": self.hardware.state.snapshot()},
                 )
             return ExecutionResult(
                 command,
                 "failed",
                 AIErrorCode.EXECUTION_FAILED,
-                result.plan.reason,
-                confirmation_state=result.confirmation_state,
-                user_message=f"动作未执行：{result.plan.reason}",
-                diagnostics={"runtime": payload},
+                tool_result.error_code,
+                user_message=tool_result.user_message or "动作未执行：工具执行失败。",
+                diagnostics={"runtime": runtime_payload},
             )
         try:
             if action.action == "simulator.inject_fault":
@@ -319,6 +337,12 @@ class AIInteractionLoop:
                     self.client,
                     RobotRuntimeConfig(runtime_mode=self.runtime_mode, dry_run=False),
                     confirmation_store=self.confirmation_store,
+                )
+                self.read_only_facade = RobotReadOnlyFacade(client=self.client, hardware=self.hardware)
+                self.tool_executor = ToolExecutor(
+                    registry=self.tool_registry,
+                    read_only=self.read_only_facade,
+                    runtime=self.runtime,
                 )
                 return ExecutionResult(action.action, "ok", None, None, user_message="模拟器状态已重置。", diagnostics={"hardware": self.hardware.state.snapshot()})
         except (ValueError, HardwareDispatchError, HardwareSafetyError) as exc:
@@ -482,6 +506,69 @@ def validate_ai_response(response: AIResponse, request_data: AIRequest) -> Robot
         actions=tuple(actions),
         user_message=user_message,
         reason_code=reason_code,
+    )
+
+
+def _tool_call_from_action(action: ProposedAction) -> dict[str, Any]:
+    if action.action == "query_status":
+        query = str(action.arguments.get("query", "summary"))
+        mapping = {
+            "summary": "get_robot_state",
+            "battery": "get_battery_status",
+            "pose": "get_pose",
+            "communication": "get_communication_status",
+            "actuators": "get_actuator_status",
+            "faults": "get_fault_status",
+            "timeline": "get_timeline",
+            "charging": "get_charging_status",
+        }
+        return {
+            "call_id": f"tool_{uuid.uuid4().hex[:12]}",
+            "tool_name": mapping.get(query, "get_robot_state"),
+            "arguments": {},
+        }
+    if action.action == "robot_command":
+        return {
+            "call_id": f"tool_{uuid.uuid4().hex[:12]}",
+            "tool_name": "execute_action",
+            "arguments": {"action": str(action.arguments["command"])},
+        }
+    return {
+        "call_id": f"tool_{uuid.uuid4().hex[:12]}",
+        "tool_name": "unknown",
+        "arguments": {},
+    }
+
+
+def _runtime_payload(tool_result: ToolResult) -> dict[str, Any]:
+    result = tool_result.result if isinstance(tool_result.result, dict) else {}
+    runtime = result.get("runtime")
+    return runtime if isinstance(runtime, dict) else {}
+
+
+def _query_message(query: str, result: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    if query == "battery":
+        battery = {
+            "percent": result.get("percent"),
+            "voltage": result.get("voltage"),
+        }
+        return f"已读取虚拟机器人电量：当前为 {battery['percent']}%。", {"battery": battery}
+    if query == "pose":
+        return f"已读取虚拟机器人姿态：{result.get('robotPose')}，IMU={result.get('pose')}。", {"pose": result.get("pose"), "robotPose": result.get("robotPose")}
+    if query == "faults":
+        faults = result.get("faults", [])
+        return f"已读取模拟器故障状态：{', '.join(faults) if faults else '无故障'}。", {"faults": faults}
+    if query == "actuators":
+        return "已读取虚拟执行器状态。", {"servos": result.get("servos", {}), "motors": result.get("motors", {})}
+    if query == "charging":
+        return f"已读取模拟器充电状态：{result.get('chargingState')}。", {"chargingState": result.get("chargingState")}
+    if query == "communication":
+        return f"已读取虚拟机器人通信状态：{result.get('communicationState')}。", {"communicationState": result.get("communicationState")}
+    if query == "timeline":
+        return "已读取模拟器事件时间线。", {"events": result.get("events", [])}
+    return (
+        f"已读取虚拟机器人状态：电量 {result.get('batteryPercent')}%，姿态 {result.get('robotPose')}，通信 {'lost' if result.get('communicationTimedOut') else 'connected'}。",
+        {"state": result},
     )
 
 
