@@ -1,8 +1,9 @@
 import math
 import unittest
 from dataclasses import FrozenInstanceError
+from types import MappingProxyType
 
-from sesame_ai_robot.tools import ToolCall, ToolSpec, create_builtin_registry
+from sesame_ai_robot.tools import ToolCall, ToolResult, ToolSpec, create_builtin_registry
 from sesame_ai_robot.tools.errors import ToolError, ToolErrorCode
 from sesame_ai_robot.tools.schemas import validate_tool_call
 
@@ -76,6 +77,43 @@ class ToolModelsSchemaTest(unittest.TestCase):
             spec.name = "y"
         with self.assertRaises(TypeError):
             spec.input_schema["type"] = "array"
+
+    def test_tool_call_arguments_are_deep_immutable(self):
+        call = ToolCall("c1", "get_timeline", {"limit": 5, "nested": {"x": 1}, "items": [1]})
+        self.assertIsInstance(call.arguments, MappingProxyType)
+        with self.assertRaises(TypeError):
+            call.arguments["limit"] = 10
+        with self.assertRaises(TypeError):
+            call.arguments["nested"]["x"] = 2
+        with self.assertRaises(AttributeError):
+            call.arguments["items"].append(2)
+
+    def test_tool_call_to_jsonable_is_detached(self):
+        call = ToolCall("c1", "get_timeline", {"limit": 5, "nested": {"x": 1}})
+        payload = call.to_jsonable()
+        payload["arguments"]["nested"]["x"] = 9
+        self.assertEqual(call.arguments["nested"]["x"], 1)
+        self.assertIsInstance(payload["arguments"], dict)
+
+    def test_tool_result_status_allowlist(self):
+        with self.assertRaises(ToolError):
+            ToolResult("c1", "get_robot_state", "running", {}, None, "")
+
+    def test_tool_result_failed_requires_error_code(self):
+        with self.assertRaises(ToolError):
+            ToolResult("c1", "get_robot_state", "failed", None, None, "")
+
+    def test_tool_result_ok_rejects_error_code(self):
+        with self.assertRaises(ToolError):
+            ToolResult("c1", "get_robot_state", "ok", {}, "invalid_arguments", "")
+
+    def test_tool_result_confirmation_requires_confirmation_id(self):
+        with self.assertRaises(ToolError):
+            ToolResult("c1", "execute_action", "confirmation_required", {"action": "walk_forward"}, "confirmation_required", "")
+
+    def test_tool_result_user_message_is_bounded(self):
+        with self.assertRaises(ToolError):
+            ToolResult("c1", "get_robot_state", "ok", {}, None, "x" * 501)
 
 
 if __name__ == "__main__":

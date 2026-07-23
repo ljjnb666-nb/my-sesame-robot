@@ -18,7 +18,8 @@ class ToolSecurityTest(unittest.TestCase):
 
     def assert_rejected_tool(self, name):
         result = self.executor.execute({"call_id": "c1", "tool_name": name, "arguments": {}})
-        self.assertIn(result.error_code, {"unknown_tool", "invalid_tool_call_schema"})
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.error_code, "unknown_tool")
 
     def test_unknown_tool(self):
         self.assert_rejected_tool("unknown")
@@ -101,9 +102,9 @@ class ToolSecurityTest(unittest.TestCase):
         for index in range(200):
             self.hardware.events.append({"eventType": "x" * 200, "time": index, "result": "ok"})
         result = self.executor.execute({"call_id": "c1", "tool_name": "get_timeline", "arguments": {"limit": 50}})
-        self.assertIn(result.status, {"ok", "failed"})
-        if result.status == "failed":
-            self.assertEqual(result.error_code, "tool_result_too_large")
+        self.assertEqual(result.status, "ok")
+        self.assertIsNone(result.error_code)
+        self.assertEqual(result.result, {"truncated": True, "reason": "read result exceeded size limit"})
 
 
 if __name__ == "__main__":

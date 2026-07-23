@@ -15,12 +15,24 @@ class ToolReadOnlyTest(unittest.TestCase):
 
     def assert_read_only(self, fn, *args):
         before = self.hardware.state.snapshot()
+        command = self.client.current_command
+        face = self.client.current_face
+        event_count = len(self.hardware.events)
         confirmation_count = len(self.runtime.confirmation_store._requests)
         runtime_mode = self.runtime.config.runtime_mode
+        emergency_stop = self.hardware.state.emergency_stop
+        charging_state = self.hardware.state.charging_state
+        faults = set(self.hardware.state.faults)
         result = fn(*args)
         self.assertEqual(self.hardware.state.snapshot(), before)
+        self.assertEqual(self.client.current_command, command)
+        self.assertEqual(self.client.current_face, face)
+        self.assertEqual(len(self.hardware.events), event_count)
         self.assertEqual(len(self.runtime.confirmation_store._requests), confirmation_count)
         self.assertEqual(self.runtime.config.runtime_mode, runtime_mode)
+        self.assertEqual(self.hardware.state.emergency_stop, emergency_stop)
+        self.assertEqual(self.hardware.state.charging_state, charging_state)
+        self.assertEqual(self.hardware.state.faults, faults)
         json.dumps(result, allow_nan=False)
         return result
 
@@ -70,6 +82,26 @@ class ToolReadOnlyTest(unittest.TestCase):
         before = self.client.get_status().raw["motionState"]
         self.facade.get_robot_state()
         self.assertEqual(self.client.get_status().raw["motionState"], before)
+
+    def test_timeline_event_fields_are_allowlisted_and_sanitized(self):
+        self.hardware.events.append({
+            "eventType": "runtime",
+            "reason": "confirmation_id=abc token=secret C:\\Users\\x",
+            "callable": lambda: None,
+            "api_key": "sk-test",
+            "object": object(),
+            "result": {"password": "hidden", "safe": "ok"},
+        })
+        result = self.assert_read_only(self.facade.get_timeline, 1)
+        event = result["events"][0]
+        self.assertEqual(set(event), {"eventType", "reason", "result"})
+        self.assertEqual(event["reason"], "[filtered]")
+        self.assertEqual(event["result"], {"safe": "ok"})
+        encoded = json.dumps(event, ensure_ascii=False)
+        self.assertNotIn("confirmation_id", encoded)
+        self.assertNotIn("token", encoded)
+        self.assertNotIn("api_key", encoded)
+        self.assertNotIn("C:\\Users", encoded)
 
 
 if __name__ == "__main__":
