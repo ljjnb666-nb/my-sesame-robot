@@ -33,6 +33,7 @@ from .ai_models import (
 from .ai_provider import AIProvider, provider_from_env
 from .confirmation import ConfirmationStore
 from .memory import MemoryManager
+from .robot_actions import SUPPORTED_ROBOT_ACTIONS
 from .runtime import RobotRuntime, RobotRuntimeConfig
 from .tools import RobotReadOnlyFacade, ToolExecutor, ToolRegistry, create_builtin_registry
 from .tools.models import ToolResult
@@ -71,17 +72,7 @@ ALLOWED_ACTIONS = {
     "simulator.reset",
 }
 ALLOWED_QUERIES = {"summary", "battery", "pose", "communication", "actuators", "faults", "timeline", "charging"}
-ALLOWED_COMMANDS = {
-    "stop",
-    "emergency_stop",
-    "wave",
-    "walk_forward",
-    "walk_backward",
-    "turn_left",
-    "turn_right",
-    "stand",
-    "rest",
-}
+ALLOWED_COMMANDS = SUPPORTED_ROBOT_ACTIONS
 
 
 @dataclass
@@ -366,28 +357,6 @@ class AIInteractionLoop:
             max_actions=self.max_actions,
         )
 
-    def _query_status(self, query: str) -> tuple[str, dict[str, Any]]:
-        snapshot = self.hardware.state.snapshot()
-        if query == "battery":
-            battery = snapshot["battery"]
-            return f"已读取虚拟机器人电量：当前为 {battery['percent']}%。", {"battery": battery}
-        if query == "pose":
-            return f"已读取虚拟机器人姿态：{snapshot['robotPose']}，IMU={snapshot['pose']}。", {"pose": snapshot["pose"], "robotPose": snapshot["robotPose"]}
-        if query == "faults":
-            return f"已读取模拟器故障状态：{', '.join(snapshot['faults']) if snapshot['faults'] else '无故障'}。", {"faults": snapshot["faults"]}
-        if query == "actuators":
-            return "已读取虚拟执行器状态。", {"servos": snapshot["servos"], "motors": snapshot["motors"]}
-        if query == "charging":
-            return f"已读取模拟器充电状态：{snapshot['chargingState']}。", {"chargingState": snapshot["chargingState"]}
-        if query == "communication":
-            return f"已读取虚拟机器人通信状态：{snapshot['communicationState']}。", {"communicationState": snapshot["communicationState"]}
-        if query == "timeline":
-            return "已读取模拟器事件时间线。", {"events": list(self.hardware.events)}
-        return (
-            f"已读取虚拟机器人状态：电量 {snapshot['battery']['percent']}%，姿态 {snapshot['robotPose']}，通信 {snapshot['communicationState']}。",
-            {"state": snapshot},
-        )
-
     def _reply(
         self,
         request_id: str,
@@ -522,9 +491,11 @@ def _tool_call_from_action(action: ProposedAction) -> dict[str, Any]:
             "timeline": "get_timeline",
             "charging": "get_charging_status",
         }
+        if query not in mapping:
+            raise ValueError(f"unsupported status query: {query}")
         return {
             "call_id": f"tool_{uuid.uuid4().hex[:12]}",
-            "tool_name": mapping.get(query, "get_robot_state"),
+            "tool_name": mapping[query],
             "arguments": {},
         }
     if action.action == "robot_command":

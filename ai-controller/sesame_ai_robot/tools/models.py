@@ -9,6 +9,11 @@ from typing import Any
 from .errors import ToolError, ToolErrorCode
 
 
+MAX_TOOL_NAME_CHARS = 64
+MAX_CALL_ID_CHARS = 128
+MAX_USER_MESSAGE_CHARS = 500
+ALLOWED_TOOL_RESULT_STATUSES = frozenset({"ok", "failed", "confirmation_required"})
+
 FORBIDDEN_TOOL_CALL_FIELDS = {
     "confirmation_id",
     "confirmation_grant",
@@ -61,17 +66,23 @@ class ToolCall:
     arguments: dict[str, Any]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.call_id, str) or len(self.call_id) > MAX_CALL_ID_CHARS:
+            raise ToolError("call_id must be a bounded string", ToolErrorCode.INVALID_TOOL_CALL_SCHEMA)
+        if not isinstance(self.tool_name, str) or len(self.tool_name) > MAX_TOOL_NAME_CHARS:
+            raise ToolError("tool_name must be a bounded string", ToolErrorCode.INVALID_TOOL_CALL_SCHEMA)
+        if not isinstance(self.arguments, dict):
+            raise ToolError("tool arguments must be an object", ToolErrorCode.INVALID_ARGUMENTS)
         for key in self.arguments:
             if _normalized(key) in {_normalized(field) for field in FORBIDDEN_TOOL_CALL_FIELDS}:
                 raise ToolError(f"forbidden tool argument field: {key}", ToolErrorCode.INVALID_TOOL_CALL_SCHEMA)
         _ensure_json_safe(self.arguments)
-        object.__setattr__(self, "arguments", deepcopy(self.arguments))
+        object.__setattr__(self, "arguments", _deep_freeze(self.arguments))
 
     def to_jsonable(self) -> dict[str, Any]:
         return {
             "call_id": self.call_id,
             "tool_name": self.tool_name,
-            "arguments": deepcopy(self.arguments),
+            "arguments": _deep_thaw(self.arguments),
         }
 
 
@@ -85,6 +96,23 @@ class ToolResult:
     user_message: str = ""
 
     def __post_init__(self) -> None:
+        if not isinstance(self.call_id, str) or len(self.call_id) > MAX_CALL_ID_CHARS:
+            raise ToolError("result call_id must be a bounded string", ToolErrorCode.INVALID_TOOL_CALL_SCHEMA)
+        if not isinstance(self.tool_name, str) or len(self.tool_name) > MAX_TOOL_NAME_CHARS:
+            raise ToolError("result tool_name must be a bounded string", ToolErrorCode.INVALID_TOOL_CALL_SCHEMA)
+        if self.status not in ALLOWED_TOOL_RESULT_STATUSES:
+            raise ToolError("unknown tool result status", ToolErrorCode.TOOL_EXECUTION_FAILED)
+        if not isinstance(self.user_message, str) or len(self.user_message) > MAX_USER_MESSAGE_CHARS:
+            raise ToolError("tool result user_message is invalid", ToolErrorCode.TOOL_EXECUTION_FAILED)
+        if self.status == "failed" and not self.error_code:
+            raise ToolError("failed tool result requires error_code", ToolErrorCode.TOOL_EXECUTION_FAILED)
+        if self.status == "ok" and self.error_code is not None:
+            raise ToolError("ok tool result must not include error_code", ToolErrorCode.TOOL_EXECUTION_FAILED)
+        if self.status == "confirmation_required":
+            if self.error_code is None:
+                raise ToolError("confirmation result requires error_code", ToolErrorCode.TOOL_EXECUTION_FAILED)
+            if not isinstance(self.result, dict) or not self.result.get("confirmation_id"):
+                raise ToolError("confirmation result requires confirmation_id", ToolErrorCode.TOOL_EXECUTION_FAILED)
         if self.result is not None:
             _ensure_json_safe(self.result)
 

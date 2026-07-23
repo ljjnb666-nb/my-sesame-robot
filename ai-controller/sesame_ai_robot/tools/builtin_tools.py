@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ..robot_actions import SUPPORTED_ROBOT_ACTIONS
 from .models import ToolSpec
 from .registry import ToolRegistry
 
@@ -34,7 +35,7 @@ def create_builtin_registry() -> ToolRegistry:
         description="Execute an existing robot action through RobotRuntime safety arbitration.",
         input_schema={
             "type": "object",
-            "properties": {"action": {"type": "string"}},
+            "properties": {"action": {"type": "string", "enum": sorted(SUPPORTED_ROBOT_ACTIONS)}},
             "required": ["action"],
             "additionalProperties": False,
         },

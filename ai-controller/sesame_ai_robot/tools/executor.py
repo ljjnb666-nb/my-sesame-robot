@@ -5,6 +5,7 @@ from typing import Any
 
 from ..ai_models import AIErrorCode
 from ..assistant import AssistantAction, AssistantPlan, AssistantStep
+from ..robot_actions import SUPPORTED_ROBOT_ACTIONS
 from ..runtime import RobotRuntime, result_to_jsonable
 from .builtin_tools import BUILTIN_TOOL_NAMES
 from .errors import ToolError, ToolErrorCode
@@ -16,17 +17,6 @@ from .schemas import validate_tool_call
 
 MAX_TOOL_CALLS_PER_REQUEST = 3
 MAX_TOOL_RESULT_BYTES = 4096
-ALLOWED_EXECUTE_ACTIONS = {
-    "stop",
-    "emergency_stop",
-    "wave",
-    "walk_forward",
-    "walk_backward",
-    "turn_left",
-    "turn_right",
-    "stand",
-    "rest",
-}
 
 
 class ToolExecutor:
@@ -37,6 +27,8 @@ class ToolExecutor:
         read_only: RobotReadOnlyFacade,
         runtime: RobotRuntime,
     ) -> None:
+        if not registry.frozen:
+            raise ToolError("tool registry must be frozen before executor construction", ToolErrorCode.FORBIDDEN_TOOL)
         self.registry = registry
         self.read_only = read_only
         self.runtime = runtime
@@ -61,7 +53,7 @@ class ToolExecutor:
         self._executing = True
         try:
             try:
-                call = payload if isinstance(payload, ToolCall) else validate_tool_call(payload, self.registry)
+                call = validate_tool_call(payload.to_jsonable() if isinstance(payload, ToolCall) else payload, self.registry)
                 self.registry.get(call.tool_name)
                 if call.tool_name not in BUILTIN_TOOL_NAMES:
                     raise ToolError("forbidden tool", ToolErrorCode.FORBIDDEN_TOOL)
@@ -97,22 +89,23 @@ class ToolExecutor:
 
     def _execute_action(self, call: ToolCall, *, confirmation_id: str | None) -> ToolResult:
         action = call.arguments.get("action")
-        if not isinstance(action, str) or action not in ALLOWED_EXECUTE_ACTIONS:
+        if not isinstance(action, str) or action not in SUPPORTED_ROBOT_ACTIONS:
             return self._error_result(call.call_id, call.tool_name, ToolErrorCode.INVALID_ARGUMENTS, "unsupported robot action")
         assistant = AssistantPlan(
             transcript=action,
             steps=(AssistantStep(AssistantAction.ROBOT_COMMAND, action, "AI structured intent"),),
         )
         runtime_result = self.runtime.step(assistant=assistant, confirmation_id=confirmation_id)
-        payload = result_to_jsonable(runtime_result, self.runtime.config)
+        payload = _runtime_summary(result_to_jsonable(runtime_result, self.runtime.config))
         if runtime_result.confirmation_state == "requested":
+            confirmation_id = runtime_result.plan.confirmation_request.confirmation_id if runtime_result.plan.confirmation_request else None
             return ToolResult(
                 call.call_id,
                 call.tool_name,
                 "confirmation_required",
-                {"action": action, "runtime": payload, "confirmation_id": runtime_result.plan.confirmation_request.confirmation_id},
+                {"action": action, "runtime": payload, "confirmation_id": confirmation_id},
                 AIErrorCode.CONFIRMATION_REQUIRED.value,
-                f"该虚拟机器人动作需要确认。原因：{runtime_result.plan.reason}",
+                _bounded_message(f"该虚拟机器人动作需要确认。原因：{runtime_result.plan.reason}"),
             )
         if runtime_result.confirmation_state not in {"none", "accepted"}:
             return ToolResult(
@@ -121,7 +114,7 @@ class ToolExecutor:
                 "failed",
                 {"action": action, "runtime": payload},
                 runtime_result.confirmation_state,
-                f"动作未执行：confirmation 状态为 {runtime_result.confirmation_state}。",
+                _bounded_message(f"动作未执行：confirmation 状态为 {runtime_result.confirmation_state}。"),
             )
         if runtime_result.sent_command:
             if runtime_result.plan.command != action:
@@ -131,7 +124,7 @@ class ToolExecutor:
                     "failed",
                     {"action": action, "runtime": payload},
                     ToolErrorCode.TOOL_EXECUTION_FAILED.value,
-                    f"动作未执行：安全层选择了 {runtime_result.plan.command}，原因：{runtime_result.plan.reason}",
+                    _bounded_message(f"动作未执行：安全层选择了 {runtime_result.plan.command}，原因：{runtime_result.plan.reason}"),
                 )
             return ToolResult(
                 call.call_id,
@@ -147,7 +140,7 @@ class ToolExecutor:
             "failed",
             {"action": action, "runtime": payload},
             ToolErrorCode.TOOL_EXECUTION_FAILED.value,
-            f"动作未执行：{runtime_result.plan.reason}",
+            _bounded_message(f"动作未执行：{runtime_result.plan.reason}"),
         )
 
     def _ok(self, call: ToolCall, result: dict[str, Any], message: str) -> ToolResult:
@@ -182,3 +175,38 @@ def _tool_name(payload: dict[str, Any] | ToolCall) -> str:
         return payload.tool_name
     value = payload.get("tool_name") if isinstance(payload, dict) else None
     return value if isinstance(value, str) and len(value) <= 64 else "unknown"
+
+
+def _runtime_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    plan = payload.get("plan") if isinstance(payload.get("plan"), dict) else {}
+    confirmation = payload.get("confirmation") if isinstance(payload.get("confirmation"), dict) else {}
+    executed = payload.get("executed") if isinstance(payload.get("executed"), dict) else {}
+    return {
+        "runtimeMode": payload.get("runtimeMode"),
+        "dryRun": payload.get("dryRun"),
+        "plan": {
+            "command": plan.get("command"),
+            "source": plan.get("source"),
+            "reason": _bounded_text(plan.get("reason")),
+        },
+        "confirmation": {
+            "state": confirmation.get("state"),
+            "error": confirmation.get("error"),
+            "reason": _bounded_text(confirmation.get("reason")),
+        },
+        "executed": {
+            "commandSent": bool(executed.get("commandSent")),
+            "faceSent": bool(executed.get("faceSent")),
+        },
+    }
+
+
+def _bounded_text(value: Any, limit: int = 240) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if len(text) <= limit else text[:limit] + "...[truncated]"
+
+
+def _bounded_message(value: str, limit: int = 480) -> str:
+    return value if len(value) <= limit else value[:limit] + "...[truncated]"

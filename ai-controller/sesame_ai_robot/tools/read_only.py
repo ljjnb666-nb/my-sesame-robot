@@ -8,6 +8,20 @@ from typing import Any
 MAX_TIMELINE_LIMIT = 50
 DEFAULT_TIMELINE_LIMIT = 20
 MAX_READ_RESULT_BYTES = 4096
+MAX_EVENT_STRING_CHARS = 160
+SENSITIVE_EVENT_TOKENS = (
+    "api_key",
+    "apikey",
+    "token",
+    "password",
+    "confirmation_id",
+    "confirmationid",
+    "confirmation_grant",
+    "secret",
+    "env:",
+    "c:\\",
+    "/users/",
+)
 
 
 class RobotReadOnlyFacade:
@@ -97,7 +111,28 @@ class RobotReadOnlyFacade:
 
 def _sanitize_event(event: dict[str, Any]) -> dict[str, Any]:
     allowed = {"time", "eventType", "action", "safetySeverity", "runtimeMode", "result", "reason", "fault", "servo_id", "motor_id"}
-    return {str(key): deepcopy(value) for key, value in event.items() if key in allowed}
+    return {str(key): _sanitize_event_value(value) for key, value in event.items() if key in allowed}
+
+
+def _sanitize_event_value(value: Any) -> Any:
+    if value is None or isinstance(value, bool) or isinstance(value, int) or isinstance(value, float):
+        return value
+    if isinstance(value, str):
+        normalized = value.lower().replace("-", "_")
+        if any(token in normalized for token in SENSITIVE_EVENT_TOKENS):
+            return "[filtered]"
+        return value[:MAX_EVENT_STRING_CHARS]
+    if isinstance(value, list):
+        return [_sanitize_event_value(item) for item in value[:10]]
+    if isinstance(value, dict):
+        clean: dict[str, Any] = {}
+        for key, child in list(value.items())[:10]:
+            normalized_key = str(key).lower().replace("-", "_")
+            if any(token in normalized_key for token in SENSITIVE_EVENT_TOKENS):
+                continue
+            clean[str(key)] = _sanitize_event_value(child)
+        return clean
+    return "[filtered]"
 
 
 def _bounded_json(payload: dict[str, Any]) -> dict[str, Any]:

@@ -4,12 +4,10 @@ import math
 from typing import Any
 
 from .errors import ToolError, ToolErrorCode
-from .models import FORBIDDEN_TOOL_CALL_FIELDS, ToolCall
+from .models import FORBIDDEN_TOOL_CALL_FIELDS, MAX_CALL_ID_CHARS, MAX_TOOL_NAME_CHARS, ToolCall
 from .registry import ToolRegistry
 
 
-MAX_TOOL_NAME_CHARS = 64
-MAX_CALL_ID_CHARS = 128
 MAX_STRING_CHARS = 500
 MAX_LIST_ITEMS = 50
 MAX_OBJECT_FIELDS = 50
@@ -51,6 +49,9 @@ def _validate_arguments(arguments: dict[str, Any], schema: dict[str, Any]) -> No
         expected = spec.get("type")
         if expected == "string":
             _bounded_string(value, key, MAX_STRING_CHARS)
+            allowed_values = spec.get("enum")
+            if allowed_values is not None and value not in allowed_values:
+                raise ToolError(f"{key} is not supported", ToolErrorCode.INVALID_ARGUMENTS)
         elif expected == "integer":
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ToolError(f"{key} must be an integer", ToolErrorCode.INVALID_ARGUMENTS)
