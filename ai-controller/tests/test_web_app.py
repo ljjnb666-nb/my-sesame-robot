@@ -1,5 +1,9 @@
 import importlib
+import importlib.util
 import unittest
+
+if importlib.util.find_spec("fastapi") is None:
+    raise unittest.SkipTest("FastAPI optional web dependency is not installed")
 
 from sesame_ai_robot.web.app import create_app
 from sesame_ai_robot.web.security import DEFAULT_HOST, DEFAULT_PORT, DEFAULT_WORKERS, TEST_ALLOWED_HOSTS

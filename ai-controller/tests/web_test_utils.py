@@ -3,8 +3,6 @@ import json
 import tempfile
 import unittest
 
-from sesame_ai_robot.web.app import create_app
-from sesame_ai_robot.web.security import TEST_ALLOWED_HOSTS
 from sesame_ai_robot.web.service import RobotSimulatorService
 
 
@@ -28,6 +26,9 @@ def make_service(testcase: unittest.TestCase, **kwargs):
 
 def make_client(testcase: unittest.TestCase, service=None, **kwargs):
     require_fastapi()
+    from sesame_ai_robot.web.app import create_app
+    from sesame_ai_robot.web.security import TEST_ALLOWED_HOSTS
+
     if service is None:
         service, _tmp = make_service(testcase)
     app = create_app(service=service, allowed_hosts=TEST_ALLOWED_HOSTS, **kwargs)
