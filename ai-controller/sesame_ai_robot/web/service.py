@@ -12,18 +12,17 @@ from ..ai_interaction import AIInteractionLoop, reply_to_jsonable
 from ..ai_provider import AIProvider, provider_from_env
 from ..confirmation import ConfirmationStore
 from ..memory import MemoryManager
-from ..runtime import RobotRuntime
-from ..tools import ToolExecutor, ToolRegistry, create_builtin_registry
+from ..tools import create_builtin_registry
 from ..tools.models import ToolResult
-from ..tools.read_only import RobotReadOnlyFacade
-from ..virtual_hardware import FAULTS, SimulatorHardwareAdapter, VirtualHardwareRobotClient
+from ..virtual_hardware import FAULTS, SimulatorHardwareAdapter
 from .security import (
     API_VERSION,
     DEFAULT_TIMELINE_LIMIT,
     MAX_CONFIRMATION_ID_CHARS,
-    MAX_PATH_CHARS,
+    MAX_FAULT_CHARS,
     MAX_TIMELINE_LIMIT,
     ensure_json_safe,
+    provider_label,
     sanitize_jsonable,
 )
 
@@ -52,12 +51,14 @@ class RobotSimulatorService:
         provider_name: str = "mock",
         memory_manager: MemoryManager | None = None,
         memory_storage_path: str | Path | None = None,
+        confirmation_store_factory: Any | None = None,
     ) -> None:
         self._lock = threading.RLock()
         self._provider_name = provider_name
         self._provider = provider or provider_from_env(provider_name)
         self._external_memory_manager = memory_manager
         self._memory_storage_path = Path(memory_storage_path) if memory_storage_path is not None else None
+        self._confirmation_store_factory = confirmation_store_factory or ConfirmationStore
         self._generation = 0
         self._pending_confirmation: PendingConfirmation | None = None
         self._build_session()
@@ -69,7 +70,7 @@ class RobotSimulatorService:
                 "version": API_VERSION,
                 "runtimeMode": RuntimeMode.SIMULATOR.value,
                 "simulatorOnly": True,
-                "provider": getattr(self._loop.provider, "name", "mock"),
+                "provider": provider_label(getattr(self._loop.provider, "name", self._provider_name)),
             }
 
     def chat(self, text: str, confirmation_id: str | None = None) -> dict[str, Any]:
@@ -140,9 +141,13 @@ class RobotSimulatorService:
         with self._lock:
             self._pending_confirmation = None
             self._loop.reset_session()
-            return {"status": "ok", "sessionId": self._loop.memory.session_id}
+            return {
+                "status": "ok",
+                "sessionId": self._loop.memory.session_id,
+                "runtimeConfirmationsRevoked": False,
+            }
 
-    def debug_identity(self) -> dict[str, int]:
+    def _testing_identity(self) -> dict[str, int]:
         with self._lock:
             return {
                 "loop": id(self._loop),
@@ -154,9 +159,36 @@ class RobotSimulatorService:
                 "memory_manager": id(self._loop.memory_manager),
             }
 
-    @property
-    def loop(self) -> AIInteractionLoop:
-        return self._loop
+    def _testing_snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "hardwareSnapshot": self._loop.hardware.state.snapshot(),
+                "currentCommand": self._loop.client.current_command,
+                "currentFace": self._loop.client.current_face,
+                "runtimeMode": self._loop.runtime.config.runtime_mode.value,
+                "allowRealRobot": self._loop.runtime.config.allow_real_robot,
+                "confirmationRequestCount": len(self._loop.confirmation_store._requests),
+                "hardwareEventCount": len(self._loop.hardware.events),
+                "faults": sorted(self._loop.hardware.state.faults),
+                "emergencyStop": self._loop.hardware.state.emergency_stop,
+                "chargingState": self._loop.hardware.state.charging_state,
+                "shortTermMemory": self._loop.memory_manager.retrieve("short_term"),
+                "longTermMemory": self._loop.memory_manager.retrieve("long_term"),
+                "memoryPath": str(self._loop.memory_manager.storage_path),
+                "pendingConfirmation": self._pending_confirmation is not None,
+            }
+
+    def _testing_store_memory(self, scope: str, key: str, value: Any) -> None:
+        with self._lock:
+            self._loop.memory_manager.store(scope, key, value)
+
+    def _testing_memory(self, scope: str, key: str | None = None) -> Any:
+        with self._lock:
+            return self._loop.memory_manager.retrieve(scope, key)
+
+    def _testing_append_event(self, event: dict[str, Any]) -> None:
+        with self._lock:
+            self._loop.hardware.events.append(dict(event))
 
     def _build_session(self, memory_manager: MemoryManager | None = None) -> None:
         manager = memory_manager or self._external_memory_manager or MemoryManager(self._memory_storage_path)
@@ -164,7 +196,7 @@ class RobotSimulatorService:
             provider=self._provider,
             runtime_mode=RuntimeMode.SIMULATOR,
             hardware=SimulatorHardwareAdapter(),
-            confirmation_store=ConfirmationStore(),
+            confirmation_store=self._confirmation_store_factory(),
             memory_manager=manager,
             tool_registry=create_builtin_registry(),
         )
@@ -187,7 +219,7 @@ class RobotSimulatorService:
             raise WebServiceError("stale_confirmation", "confirmation text does not match the pending request")
 
     def _validate_fault(self, fault: str, *, allow_all: bool) -> None:
-        if len(fault) > MAX_PATH_CHARS:
+        if len(fault) > MAX_FAULT_CHARS:
             raise WebServiceError("invalid_request", "fault is too long")
         if allow_all and fault == "all":
             return
@@ -201,31 +233,12 @@ def create_service(
     provider_name: str = "mock",
     memory_manager: MemoryManager | None = None,
     memory_storage_path: str | Path | None = None,
+    confirmation_store_factory: Any | None = None,
 ) -> RobotSimulatorService:
     return RobotSimulatorService(
         provider=provider,
         provider_name=provider_name,
         memory_manager=memory_manager,
         memory_storage_path=memory_storage_path,
-    )
-
-
-def assert_service_internals(service: RobotSimulatorService) -> tuple[
-    SimulatorHardwareAdapter,
-    VirtualHardwareRobotClient,
-    ConfirmationStore,
-    RobotRuntime,
-    ToolRegistry,
-    ToolExecutor,
-    RobotReadOnlyFacade,
-]:
-    loop = service.loop
-    return (
-        loop.hardware,
-        loop.client,
-        loop.confirmation_store,
-        loop.runtime,
-        loop.tool_registry,
-        loop.tool_executor,
-        loop.read_only_facade,
+        confirmation_store_factory=confirmation_store_factory,
     )
