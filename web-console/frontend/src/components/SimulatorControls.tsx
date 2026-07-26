@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { RotateCcw, Trash2, Zap } from "lucide-react";
+import { faultLabel, t } from "../i18n/zh-CN";
 import { ErrorBanner } from "./ErrorBanner";
 
 type Props = {
@@ -24,8 +25,8 @@ export function SimulatorControls({ disabled, faults, onInject, onClear, onClear
     setError(null);
     try {
       await action();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Simulator 操作失败。");
+    } catch {
+      setError(t("controls.simulatorFailed"));
     } finally {
       setBusy(false);
     }
@@ -44,12 +45,12 @@ export function SimulatorControls({ disabled, faults, onInject, onClear, onClear
   return (
     <section className="panel simulator-controls">
       <div className="panel-title">
-        <h2>Simulator Controls</h2>
-        <span>Backend allowlist decides support</span>
+        <h2>{t("panel.controls")}</h2>
+        <span>{t("panel.backendAllowlist")}</span>
       </div>
-      <ErrorBanner message={error} />
+      <ErrorBanner message={error} tone="danger" />
       <form className="fault-form" onSubmit={submit}>
-        <label htmlFor="fault-input">Fault injection</label>
+        <label htmlFor="fault-input">{t("controls.faultInjection")}</label>
         <div className="fault-row">
           <input
             id="fault-input"
@@ -58,13 +59,14 @@ export function SimulatorControls({ disabled, faults, onInject, onClear, onClear
             maxLength={80}
             disabled={disabled || busy}
             onChange={(event) => setFault(event.target.value)}
-            placeholder="battery_low"
+            placeholder={t("controls.faultPlaceholder")}
           />
           <button type="submit" disabled={disabled || busy || !fault.trim()}>
             <Zap aria-hidden="true" />
-            Inject
+            {t("button.inject")}
           </button>
         </div>
+        <small className="form-help">{t("controls.suggestions")}</small>
         <datalist id="fault-suggestions">
           {suggestions.map((item) => (
             <option key={item} value={item} />
@@ -75,12 +77,12 @@ export function SimulatorControls({ disabled, faults, onInject, onClear, onClear
         {faults.map((item) => (
           <button key={item} type="button" className="secondary-button" disabled={disabled || busy} onClick={() => void run(() => onClear(item))}>
             <Trash2 aria-hidden="true" />
-            Clear {item}
+            {t("controls.clearFault", { fault: faultLabel(item) })}
           </button>
         ))}
         <button type="button" className="secondary-button" disabled={disabled || busy} onClick={() => void run(onClearAll)}>
           <Trash2 aria-hidden="true" />
-          Clear all faults
+          {t("button.clearAllFaults")}
         </button>
       </div>
       <div className="reset-actions">
@@ -89,26 +91,26 @@ export function SimulatorControls({ disabled, faults, onInject, onClear, onClear
           className="danger-button"
           disabled={disabled || busy}
           onClick={() => {
-            if (window.confirm("清空当前模拟器状态、清空 Web pending confirmation，使旧 confirmation 失效，并保留 MemoryManager。")) {
+            if (window.confirm(t("controls.resetSimulatorConfirm"))) {
               void run(onResetSimulator);
             }
           }}
         >
           <RotateCcw aria-hidden="true" />
-          Reset simulator
+          {t("button.resetSimulator")}
         </button>
         <button
           type="button"
           className="secondary-button"
           disabled={disabled || busy}
           onClick={() => {
-            if (window.confirm("清空当前对话和 short-term memory，保留模拟器硬件状态。")) {
+            if (window.confirm(t("controls.resetSessionConfirm"))) {
               void run(onResetSession);
             }
           }}
         >
           <RotateCcw aria-hidden="true" />
-          Reset session
+          {t("button.resetSession")}
         </button>
       </div>
     </section>

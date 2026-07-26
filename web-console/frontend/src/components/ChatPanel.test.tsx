@@ -34,6 +34,6 @@ describe("ChatPanel", () => {
 
   it("disables empty submit", () => {
     render(<ChatPanel messages={[]} input="" disabled={false} sending={false} onInput={vi.fn()} onSend={vi.fn()} onClear={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
   });
 });

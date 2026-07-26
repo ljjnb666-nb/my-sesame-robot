@@ -1,5 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import { TimelineResponse } from "../api/types";
+import { t } from "../i18n/zh-CN";
 import { EmptyState } from "./EmptyState";
 import { TimelineEvent } from "./TimelineEvent";
 
@@ -18,14 +19,14 @@ export function TimelinePanel({ timeline, limit, loading, error, disabled = fals
   return (
     <section className="panel timeline-panel">
       <div className="panel-title">
-        <h2>Timeline</h2>
+        <h2>{t("panel.timeline")}</h2>
         <button type="button" className="secondary-button" onClick={onRefresh} disabled={disabled}>
           <RefreshCw aria-hidden="true" />
-          Refresh
+          {t("button.refresh")}
         </button>
       </div>
       <label className="limit-control" htmlFor="timeline-limit">
-        Limit
+        {t("timeline.limit")}
         <select id="timeline-limit" value={limit} onChange={(event) => onLimit(Number(event.target.value))} disabled={disabled}>
           <option value={10}>10</option>
           <option value={20}>20</option>
@@ -33,9 +34,9 @@ export function TimelinePanel({ timeline, limit, loading, error, disabled = fals
         </select>
       </label>
       {error && <div className="error-banner">{error}</div>}
-      {loading && <div className="inline-loading">Refreshing timeline...</div>}
+      {loading && <div className="inline-loading">{t("timeline.loading")}</div>}
       <div className="timeline-list">
-        {events.length ? events.map((event, index) => <TimelineEvent key={`${event.time ?? event.timestamp ?? "event"}-${index}`} event={event} />) : <EmptyState title="No timeline events yet." />}
+        {events.length ? events.map((event, index) => <TimelineEvent key={`${event.time ?? event.timestamp ?? "event"}-${index}`} event={event} />) : <EmptyState title={t("timeline.empty")} />}
       </div>
     </section>
   );

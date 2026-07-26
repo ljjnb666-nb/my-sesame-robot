@@ -1,5 +1,6 @@
 import { FormEvent, KeyboardEvent } from "react";
 import { Send } from "lucide-react";
+import { t } from "../i18n/zh-CN";
 
 const LIMIT = 500;
 
@@ -29,7 +30,7 @@ export function ChatComposer({ value, disabled, sending, onChange, onSubmit }: P
 
   return (
     <form className="chat-composer" onSubmit={submit}>
-      <label htmlFor="chat-input">AI 指令</label>
+      <label htmlFor="chat-input">{t("chat.inputLabel")}</label>
       <textarea
         id="chat-input"
         value={value}
@@ -38,13 +39,13 @@ export function ChatComposer({ value, disabled, sending, onChange, onSubmit }: P
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={onKeyDown}
         rows={3}
-        placeholder="输入高级动作或状态查询..."
+        placeholder={t("chat.placeholder")}
       />
       <div className="composer-actions">
-        <span className={remaining < 30 ? "warn-text" : ""}>剩余 {remaining}</span>
+        <span className={remaining < 30 ? "warn-text" : ""}>{t("chat.remaining", { count: remaining })}</span>
         <button type="submit" disabled={!canSend}>
           <Send aria-hidden="true" />
-          Send
+          {sending ? t("button.sending") : t("button.send")}
         </button>
       </div>
     </form>

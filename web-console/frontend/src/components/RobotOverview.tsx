@@ -1,8 +1,20 @@
 import { BatteryCharging, CircleAlert, RadioTower, ShieldAlert } from "lucide-react";
 import { RobotStateResponse } from "../api/types";
-import { StatusField } from "./StatusField";
-import { RobotSchematic } from "./RobotSchematic";
+import {
+  chargingStateLabel,
+  commandLabel,
+  communicationLabel,
+  emergencyStopLabel,
+  faceLabel,
+  faultLabel,
+  motionStateLabel,
+  robotPoseLabel,
+  runtimeModeLabel,
+  t,
+} from "../i18n/zh-CN";
 import { EmptyState } from "./EmptyState";
+import { RobotSchematic } from "./RobotSchematic";
+import { StatusField } from "./StatusField";
 
 type Props = {
   state: RobotStateResponse | null;
@@ -17,39 +29,39 @@ export function RobotOverview({ state, lastUpdatedAt }: Props) {
   return (
     <section className="panel robot-overview">
       <div className="panel-title">
-        <h2>Robot Overview</h2>
-        <span>{lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString() : "not synced"}</span>
+        <h2>{t("panel.robot")}</h2>
+        <span>{lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString() : t("robot.notSynced")}</span>
       </div>
       <RobotSchematic state={state} />
       <div className="metric-grid">
         <div className="battery-box">
           <div className="metric-title">
             <BatteryCharging aria-hidden="true" />
-            Battery
+            {t("robot.battery")}
           </div>
-          <strong>{state?.batteryPercent ?? "unknown"}%</strong>
+          <strong>{state?.batteryPercent ?? "未知"}%</strong>
           <div className="battery-track">
             <span style={{ width: `${Math.max(0, Math.min(100, battery))}%` }} />
           </div>
         </div>
-        <StatusField label="Motion" value={state?.motionState} tone={state?.motionState === "moving" ? "warning" : "normal"} />
-        <StatusField label="Command" value={state?.currentCommand || "none"} />
-        <StatusField label="Face" value={state?.currentFace} />
-        <StatusField label="Pose" value={state?.robotPose} />
-        <StatusField label="Charging" value={state?.chargingState} />
-        <StatusField label="Runtime" value={state?.runtimeMode} />
-        <StatusField label="Communication" value={timedOut ? "timeout" : "online"} tone={timedOut ? "danger" : "normal"} />
+        <StatusField label={t("robot.motion")} value={motionStateLabel(state?.motionState)} tone={state?.motionState === "moving" ? "warning" : "normal"} />
+        <StatusField label={t("robot.command")} value={commandLabel(state?.currentCommand)} />
+        <StatusField label={t("robot.face")} value={faceLabel(state?.currentFace)} />
+        <StatusField label={t("robot.pose")} value={robotPoseLabel(state?.robotPose)} />
+        <StatusField label={t("robot.charging")} value={chargingStateLabel(state?.chargingState)} />
+        <StatusField label={t("robot.runtime")} value={runtimeModeLabel(state?.runtimeMode)} />
+        <StatusField label={t("robot.communication")} value={communicationLabel(state?.communicationTimedOut)} tone={timedOut ? "danger" : "normal"} />
       </div>
       <div className={`safety-strip ${emergency ? "danger" : "ok"}`}>
         {emergency ? <ShieldAlert aria-hidden="true" /> : <RadioTower aria-hidden="true" />}
-        Emergency stop: {emergency ? "ACTIVE" : "inactive"}
+        {t("robot.emergencyStop")}：{emergencyStopLabel(state?.emergencyStopActive)}
       </div>
       <div className={`fault-list ${faults.length ? "has-faults" : ""}`}>
         <div>
           <CircleAlert aria-hidden="true" />
-          Faults ({faults.length})
+          {t("robot.faults")}（{faults.length}）
         </div>
-        {faults.length ? faults.map((fault) => <span key={fault}>{fault}</span>) : <EmptyState title="No simulator faults" />}
+        {faults.length ? faults.map((fault) => <span key={fault}>{faultLabel(fault)}</span>) : <EmptyState title={t("robot.noFaults")} />}
       </div>
     </section>
   );

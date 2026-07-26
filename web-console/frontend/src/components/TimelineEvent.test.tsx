@@ -5,12 +5,13 @@ import { TimelineEvent } from "./TimelineEvent";
 describe("TimelineEvent", () => {
   it("renders allowed result fields", () => {
     render(<TimelineEvent event={{ eventType: "fault", action: "inject", resultStatus: "ok", runtimeMode: "simulator" }} />);
-    expect(screen.getByText(/result ok/)).toBeInTheDocument();
+    expect(screen.getByText("结果：已执行")).toBeInTheDocument();
+    expect(screen.getByText(/代码：ok/)).toBeInTheDocument();
   });
 
   it("renders result state", () => {
     render(<TimelineEvent event={{ resultState: "accepted" }} />);
-    expect(screen.getAllByText(/accepted/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/已确认并执行/).length).toBeGreaterThan(0);
   });
 
   it("renders result code", () => {
@@ -25,6 +26,6 @@ describe("TimelineEvent", () => {
 
   it("uses generic result when no allowlisted field exists", () => {
     render(<TimelineEvent event={{ eventType: "x" }} />);
-    expect(screen.getAllByText(/result available/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/已有结果/).length).toBeGreaterThan(0);
   });
 });

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiErrorMessage } from "../i18n/zh-CN";
 
 type PollingState<T> = {
   data: T | null;
@@ -41,7 +42,7 @@ export function usePolling<T>(
       setLastUpdatedAt(new Date());
     } catch (caught) {
       if (!controller.signal.aborted) {
-        setError(caught instanceof Error ? caught.message : "轮询失败。");
+        setError(apiErrorMessage(caught));
       }
     } finally {
       if (inFlight.current === controller) {
