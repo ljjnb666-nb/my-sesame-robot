@@ -55,6 +55,10 @@ class FaultRequest(StrictBaseModel):
         return value
 
 
+class EmptyRequest(StrictBaseModel):
+    pass
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str

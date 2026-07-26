@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from .schemas import ChatRequest, FaultRequest
+from .schemas import ChatRequest, EmptyRequest, FaultRequest
 from .service import RobotSimulatorService
 
 
@@ -37,11 +37,11 @@ def create_router(get_service) -> APIRouter:
         return service.clear_fault(fault)
 
     @router.post("/simulator/reset")
-    def reset_simulator(service: RobotSimulatorService = Depends(get_service)):
+    def reset_simulator(request: EmptyRequest, service: RobotSimulatorService = Depends(get_service)):
         return service.reset_simulator()
 
     @router.post("/session/reset")
-    def reset_session(service: RobotSimulatorService = Depends(get_service)):
+    def reset_session(request: EmptyRequest, service: RobotSimulatorService = Depends(get_service)):
         return service.reset_session()
 
     return router

@@ -12,10 +12,11 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
 DEFAULT_WORKERS = 1
 DEFAULT_ALLOWED_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")
+DEFAULT_ALLOWED_HOSTS = ("127.0.0.1", "localhost")
+TEST_ALLOWED_HOSTS = DEFAULT_ALLOWED_HOSTS + ("testserver",)
 MAX_BODY_BYTES = 16 * 1024
 MAX_CONFIRMATION_ID_CHARS = 128
 MAX_FAULT_CHARS = 80
-MAX_PATH_CHARS = 120
 MAX_TIMELINE_LIMIT = 50
 DEFAULT_TIMELINE_LIMIT = 20
 CHAT_TEXT_LIMIT = min(MAX_TEXT_CHARS, 500)
@@ -48,6 +49,22 @@ def assert_local_host(host: str) -> str:
     if normalized not in {"127.0.0.1", "localhost"}:
         raise ValueError("web simulator API is localhost-only")
     return "127.0.0.1" if normalized == "localhost" else normalized
+
+
+def is_json_content_type(value: str | None) -> bool:
+    if not value:
+        return False
+    media_type = value.split(";", 1)[0].strip().lower()
+    return media_type == "application/json"
+
+
+def provider_label(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"mock", "deterministic-mock"}:
+        return "mock"
+    if raw in {"openai", "openai-compatible"}:
+        return "openai-compatible"
+    return "custom"
 
 
 def safe_error(code: str = "invalid_request", message: str = "请求未通过校验。") -> dict[str, Any]:

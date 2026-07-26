@@ -21,6 +21,7 @@ SENSITIVE_EVENT_TOKENS = (
     "env:",
     "c:\\",
     "/users/",
+    "memory",
 )
 
 

@@ -3,12 +3,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .body_limit import BodyLimitMiddleware
 from .errors import (
     generic_exception_handler,
     http_exception_handler,
@@ -16,7 +17,7 @@ from .errors import (
     web_service_exception_handler,
 )
 from .routes import create_router
-from .security import DEFAULT_ALLOWED_ORIGINS, MAX_BODY_BYTES, safe_error
+from .security import DEFAULT_ALLOWED_HOSTS, DEFAULT_ALLOWED_ORIGINS
 from .service import RobotSimulatorService, WebServiceError, create_service
 
 
@@ -25,6 +26,7 @@ def create_app(
     service: RobotSimulatorService | None = None,
     service_factory: Callable[[], RobotSimulatorService] | None = None,
     allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS,
+    allowed_hosts: tuple[str, ...] = DEFAULT_ALLOWED_HOSTS,
 ) -> FastAPI:
     app = FastAPI(title="Sesame Web Simulator API", version="0.4")
     app.state.service = service
@@ -37,21 +39,8 @@ def create_app(
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type"],
     )
-
-    @app.middleware("http")
-    async def enforce_request_limits(request: Request, call_next):
-        content_type = request.headers.get("content-type", "")
-        size = request.headers.get("content-length")
-        has_body = size is not None and size != "0"
-        if request.method in {"POST", "PUT", "PATCH"} and has_body and "application/json" not in content_type.lower():
-            return JSONResponse(safe_error("invalid_request", "请求必须使用 JSON。"), status_code=415)
-        if size is not None:
-            try:
-                if int(size) > MAX_BODY_BYTES:
-                    return JSONResponse(safe_error("request_too_large", "请求体过大。"), status_code=413)
-            except ValueError:
-                return JSONResponse(safe_error("invalid_request", "请求未通过校验。"), status_code=400)
-        return await call_next(request)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
+    app.add_middleware(BodyLimitMiddleware)
 
     def get_service() -> RobotSimulatorService:
         if app.state.service is None:
