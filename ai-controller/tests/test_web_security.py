@@ -1,5 +1,6 @@
 import os
 import importlib.util
+import asyncio
 import unittest
 
 if importlib.util.find_spec("fastapi") is None:
@@ -117,6 +118,42 @@ class WebSecurityTest(unittest.TestCase):
         status, body, _sent = run_asgi_request(app, headers={}, chunks=(b'{"text":"battery"}',))
         self.assertEqual(status, 415)
         self.assertEqual(json_body(body)["error"]["code"], "invalid_request")
+
+    def test_disconnect_event_does_not_loop_forever(self):
+        app = create_app(service=self.service, allowed_hosts=TEST_ALLOWED_HOSTS)
+
+        async def run_disconnect():
+            sent = []
+
+            async def receive():
+                return {"type": "http.disconnect"}
+
+            async def send(message):
+                sent.append(message)
+
+            await asyncio.wait_for(
+                app(
+                    {
+                        "type": "http",
+                        "asgi": {"version": "3.0"},
+                        "http_version": "1.1",
+                        "method": "POST",
+                        "scheme": "http",
+                        "path": "/api/chat",
+                        "raw_path": b"/api/chat",
+                        "query_string": b"",
+                        "headers": [(b"host", b"testserver"), (b"content-type", b"application/json")],
+                        "client": ("127.0.0.1", 12345),
+                        "server": ("testserver", 80),
+                    },
+                    receive,
+                    send,
+                ),
+                timeout=1,
+            )
+            return sent
+
+        self.assertEqual(asyncio.run(run_disconnect()), [])
 
     def test_actual_body_limit_does_not_depend_on_content_length(self):
         app = create_app(service=self.service, allowed_hosts=TEST_ALLOWED_HOSTS)

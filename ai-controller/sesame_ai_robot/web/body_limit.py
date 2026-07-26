@@ -34,10 +34,12 @@ class BodyLimitMiddleware:
         chunks: list[bytes] = []
         total = 0
         more_body = True
+        disconnected = False
         while more_body:
             message = await receive()
             if message["type"] != "http.request":
-                continue
+                disconnected = True
+                break
             body = message.get("body", b"")
             if body:
                 total += len(body)
@@ -48,6 +50,8 @@ class BodyLimitMiddleware:
             more_body = bool(message.get("more_body", False))
 
         body = b"".join(chunks)
+        if disconnected and not body:
+            return
         method = scope.get("method", "").upper()
         content_type = headers.get(b"content-type")
         content_type_text = content_type.decode("latin1") if content_type is not None else ""
