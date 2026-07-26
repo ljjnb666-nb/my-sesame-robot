@@ -1,6 +1,10 @@
 import os
+import importlib.util
 import tempfile
 import unittest
+
+if importlib.util.find_spec("fastapi") is None:
+    raise unittest.SkipTest("FastAPI optional web dependency is not installed")
 
 from fastapi.testclient import TestClient
 
