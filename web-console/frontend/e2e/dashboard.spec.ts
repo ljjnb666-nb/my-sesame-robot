@@ -9,7 +9,7 @@ test("dashboard starts online and can query battery", async ({ page }, testInfo)
   await expect(page.getByText("API ONLINE")).toBeVisible();
   await page.getByLabel("AI 指令").fill("battery");
   await page.getByRole("button", { name: /send/i }).click();
-  await expect(page.getByText("80%")).toBeVisible();
+  await expect(page.locator(".battery-box strong")).toHaveText("80%");
   if (testInfo.project.name === "chromium") {
     await page.screenshot({ path: "test-results/desktop-dashboard.png", fullPage: true });
   }
