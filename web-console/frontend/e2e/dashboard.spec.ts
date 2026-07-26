@@ -108,10 +108,13 @@ test("07 Escape after confirm submit does not cancel in-flight result", async ({
 });
 
 test("08 cancel confirmation does not execute action", async ({ page }) => {
-  const chatBodies: unknown[] = [];
+  let chatRequestCount = 0;
+  let confirmationRequestObserved = false;
   page.on("request", (request) => {
     if (request.url().endsWith("/api/chat")) {
-      chatBodies.push(request.postDataJSON());
+      chatRequestCount += 1;
+      const data = request.postDataJSON() as { confirmationId?: string | null };
+      confirmationRequestObserved = confirmationRequestObserved || Boolean(data.confirmationId);
     }
   });
   await page.goto("/");
@@ -119,8 +122,8 @@ test("08 cancel confirmation does not execute action", async ({ page }) => {
   await page.getByRole("button", { name: /send/i }).click();
   await page.getByRole("button", { name: /cancel/i }).click();
   await expect(page.locator(".status-field", { hasText: "COMMAND" })).toContainText(/none|unknown/);
-  expect(chatBodies).toHaveLength(1);
-  expect(chatBodies.some((body) => typeof body === "object" && body !== null && "confirmationId" in body && Boolean((body as { confirmationId?: string | null }).confirmationId))).toBe(false);
+  expect(chatRequestCount).toBe(1);
+  expect(confirmationRequestObserved).toBe(false);
 });
 
 test("11 UI reset simulator sends strict empty body and clears faults", async ({ page }) => {
@@ -189,15 +192,16 @@ test("16 confirmation id is not persisted to DOM URL storage or console", async 
   await expect(page.getByRole("dialog")).toBeVisible();
   const fullId = await confirmationIdPromise;
   expect(Boolean(fullId)).toBe(true);
-  const leak = await page.evaluate((id) => ({
-    text: document.body.innerText.includes(id),
-    html: document.documentElement.outerHTML.includes(id),
-    url: location.href.includes(id),
-    local: JSON.stringify(localStorage).includes(id),
-    session: JSON.stringify(sessionStorage).includes(id),
-  }), fullId);
-  expect(Object.values(leak).some(Boolean)).toBe(false);
-  expect(consoleMessages.some((text) => text.includes(fullId))).toBe(false);
+  const leakObserved = await page.evaluate((id) => (
+    document.body.innerText.includes(id) ||
+    document.documentElement.outerHTML.includes(id) ||
+    location.href.includes(id) ||
+    JSON.stringify(localStorage).includes(id) ||
+    JSON.stringify(sessionStorage).includes(id)
+  ), fullId);
+  const consoleLeakObserved = consoleMessages.some((text) => text.includes(fullId));
+  expect(leakObserved).toBe(false);
+  expect(consoleLeakObserved).toBe(false);
 });
 
 test("17 mobile 390x844 has no horizontal overflow", async ({ page }, testInfo) => {
