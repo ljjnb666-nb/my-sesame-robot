@@ -66,6 +66,13 @@ The default host is `127.0.0.1` and default port is `8787`. Non-localhost hosts 
 - `http://127.0.0.1:5173`
 - `http://localhost:5173`
 
+The FastAPI app also validates the HTTP `Host` header. Production hosts are limited to:
+
+- `127.0.0.1`
+- `localhost`
+
+Tests may explicitly add `testserver` through the app factory. The app does not use wildcard hosts, wildcard CORS, origin reflection, or CORS as a substitute for Host validation.
+
 Startup prints:
 
 ```text
@@ -99,13 +106,15 @@ python -m sesame_ai_robot.web
 
 ## Limits
 
-- JSON request body maximum: 16 KB.
+- Actual received JSON request body maximum: 16 KB. The ASGI body limit counts received `http.request` bytes and does not trust `Content-Length` alone.
 - Chat text maximum: 500 characters.
 - Confirmation ID maximum: 128 characters.
 - Fault name maximum: 80 characters.
 - Timeline limit: 1..50.
 - Unknown fields are rejected.
 - Runtime mode, real-robot enablement, safety severity, ToolCall payloads, and confirmation grants are forbidden request fields.
+- POST requests with a body must use `application/json`; `application/json; charset=utf-8` is accepted.
+- `POST /api/simulator/reset` and `POST /api/session/reset` accept only an empty JSON object `{}`.
 
 Errors are normalized and do not include traceback, local paths, environment variables, API keys, or Python repr output.
 
@@ -114,6 +123,24 @@ Errors are normalized and do not include traceback, local paths, environment var
 The default provider is `mock`. CI must keep `SESAME_AI_PROVIDER=mock` and must not call external AI services.
 
 Developers may explicitly configure the openai-compatible provider through environment variables, but health and error responses must not reveal API keys, credentials, or authorization headers.
+
+`GET /api/health` returns only a safe provider label: `mock`, `openai-compatible`, or `custom`.
+
+## Confirmation Reset Semantics
+
+`POST /api/session/reset` clears conversation state, short-term memory, and Web pending confirmation UI metadata. It does not revoke Runtime confirmation records, and the response includes:
+
+```json
+{"runtimeConfirmationsRevoked": false}
+```
+
+Any later confirmation submission still goes through `AIInteractionLoop -> ToolExecutor -> RobotRuntime -> ConfirmationStore` and receives the real Runtime result. The Web layer does not fabricate confirmation results.
+
+`POST /api/simulator/reset` fully rebuilds the simulator Runtime graph and ConfirmationStore. Old confirmation IDs become `unknown_id`.
+
+## CI Web Coverage
+
+Core AI tests run before installing the Web optional dependencies to prove the core package does not require FastAPI. CI then installs `.[web]` and runs `ai-controller/run-web-tests.ps1`. That script imports FastAPI, Pydantic, Uvicorn, and `fastapi.testclient`, forces `SESAME_AI_PROVIDER=mock`, runs all `test_web_*.py` tests, prints the total count, and fails if any test is skipped.
 
 ## Hardware Status
 
