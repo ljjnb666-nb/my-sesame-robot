@@ -19,7 +19,12 @@ describe("ConfirmationDialog", () => {
     expect(screen.queryByText(pending.confirmationId)).toBeNull();
   });
 
-  it("Enter does not confirm and Escape cancels", async () => {
+  it("focuses Cancel when opened idle", () => {
+    render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /cancel/i })).toHaveFocus();
+  });
+
+  it("Enter does not confirm and Escape cancels while idle", async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
@@ -33,6 +38,45 @@ describe("ConfirmationDialog", () => {
   it("confirm button is not autofocus", () => {
     render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
     expect(screen.getByRole("button", { name: /confirm action/i })).not.toHaveFocus();
+  });
+
+  it("does not restore opener focus when idle changes to submitting", () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const { rerender } = render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    rerender(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(opener).not.toHaveFocus();
+    expect(screen.getByRole("dialog")).toHaveFocus();
+    opener.remove();
+  });
+
+  it("focuses dialog itself while submitting", () => {
+    render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByRole("dialog")).toHaveFocus();
+  });
+
+  it("keeps Tab focus on dialog when all buttons are disabled", async () => {
+    const user = userEvent.setup();
+    render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    await user.keyboard("{Tab}");
+    expect(screen.getByRole("dialog")).toHaveFocus();
+  });
+
+  it("keeps Shift+Tab focus on dialog when all buttons are disabled", async () => {
+    const user = userEvent.setup();
+    render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(screen.getByRole("dialog")).toHaveFocus();
+  });
+
+  it("cycles Tab within idle dialog buttons", async () => {
+    const user = userEvent.setup();
+    render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(screen.getByRole("button", { name: /confirm action/i })).toHaveFocus();
+    await user.keyboard("{Tab}");
+    expect(screen.getByRole("button", { name: /cancel/i })).toHaveFocus();
   });
 
   it("does not cancel with Escape while submitting", async () => {
@@ -56,6 +100,27 @@ describe("ConfirmationDialog", () => {
     render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={onConfirm} onCancel={vi.fn()} />);
     await user.keyboard("{Enter}");
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("does not activate confirmation controls with Space while submitting", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={onConfirm} onCancel={onCancel} />);
+    await user.keyboard(" ");
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("restores opener focus only after dialog closes", () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const { rerender } = render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(opener).not.toHaveFocus();
+    rerender(<ConfirmationDialog confirmation={null} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(opener).toHaveFocus();
+    opener.remove();
   });
 
   it("shows runtime wait text while submitting", () => {

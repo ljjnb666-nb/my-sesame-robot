@@ -9,7 +9,7 @@ function assertLoopbackTarget(value: string): string {
   if (parsed.protocol !== "http:" || !loopback || parsed.username || parsed.password) {
     throw new Error("VITE_DEV_API_TARGET must be an HTTP loopback URL.");
   }
-  return value;
+  return parsed.origin;
 }
 
 const safeApiTarget = assertLoopbackTarget(apiTarget);

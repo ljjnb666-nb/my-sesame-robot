@@ -28,7 +28,7 @@ export function ChatPanel({ messages, input, disabled, sending, onInput, onSend,
     <section className="panel chat-panel">
       <div className="panel-title">
         <h2>AI Chat</h2>
-        <button type="button" className="secondary-button" onClick={onClear}>
+        <button type="button" className="secondary-button" onClick={onClear} disabled={disabled || sending}>
           Clear chat
         </button>
       </div>

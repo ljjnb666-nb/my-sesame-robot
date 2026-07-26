@@ -55,7 +55,7 @@ describe("apiClient", () => {
 
   it("falls back on non-string error message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: { code: "invalid_request", message: { html: "<b>x</b>" } } }, { status: 400 })));
-    await expect(apiClient.health()).rejects.toThrow("API 请求失败");
+    await expect(apiClient.health()).rejects.toThrow("API request failed");
   });
 
   it("clips long error messages", async () => {
@@ -101,6 +101,11 @@ describe("apiClient", () => {
     expect(JSON.stringify(timeline)).not.toContain("sk-secret");
     expect(JSON.stringify(timeline)).not.toContain("nested");
   });
+
+  it("rejects malformed chat responses without status", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ message: "missing status" })));
+    await expect(apiClient.chat({ text: "walk", confirmationId: "id" })).rejects.toMatchObject({ code: "invalid_response" });
+  });
 });
 
 describe("validateApiBase", () => {
@@ -113,10 +118,19 @@ describe("validateApiBase", () => {
     expect(validateApiBase(value).ok).toBe(true);
   });
 
+  it("normalizes trailing slash on loopback API base", () => {
+    expect(validateApiBase("http://localhost:8787/api/")).toEqual({ ok: true, base: "http://localhost:8787/api" });
+  });
+
   it.each([
     ["https://example.com/api"],
     ["https://localhost:8787/api"],
     ["http://[::1]:8787/api"],
+    ["http://localhost:8787/foo/api"],
+    ["http://localhost:8787/v1/api"],
+    ["http://localhost:8787/api/extra"],
+    ["http://localhost:8787/api?x=1"],
+    ["http://localhost:8787/api#x"],
     ["http://0.0.0.0:8787/api"],
     ["http://192.168.1.2:8787/api"],
     ["http://user:pass@127.0.0.1:8787/api"],

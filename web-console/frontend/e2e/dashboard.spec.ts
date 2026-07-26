@@ -19,9 +19,12 @@ test("02 query battery shows robot battery", async ({ page }) => {
 
 test("03 wave updates chat or timeline", async ({ page }) => {
   await page.goto("/");
+  const chatResponse = page.waitForResponse((response) => response.url().endsWith("/api/chat") && response.request().method() === "POST");
   await page.getByLabel(/AI/).fill("wave");
   await page.getByRole("button", { name: /send/i }).click();
-  await expect(page.getByText("wave").first()).toBeVisible();
+  const body = await chatResponse.then((response) => response.json() as Promise<{ status?: string; action?: string | null; message?: string }>);
+  expect(body.status).toBe("ok");
+  expect(body.action).toBe("wave");
 });
 
 test("04 walk opens confirmation dialog", async ({ page }, testInfo) => {
@@ -51,6 +54,13 @@ test("06 Enter does not execute confirmation", async ({ page }) => {
 });
 
 test("07 Escape after confirm submit does not cancel in-flight result", async ({ page }, testInfo) => {
+  const backgroundWrites: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (url.includes("/api/simulator/reset") || url.includes("/api/session/reset") || url.includes("/api/simulator/faults")) {
+      backgroundWrites.push(`${request.method()} ${url}`);
+    }
+  });
   await page.route("**/api/chat", async (route) => {
     const data = route.request().postDataJSON() as { confirmationId?: string | null };
     if (data.confirmationId) {
@@ -71,28 +81,67 @@ test("07 Escape after confirm submit does not cancel in-flight result", async ({
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("button", { name: /confirm action/i })).toBeDisabled();
   await expect(page.getByRole("button", { name: /cancel/i })).toBeDisabled();
+  await expect.poll(() => page.evaluate(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    return Boolean(dialog?.contains(document.activeElement));
+  })).toBe(true);
   if (testInfo.project.name === "chromium") await page.screenshot({ path: "test-results/confirmation-submitting.png", fullPage: true });
+  for (let index = 0; index < 4; index += 1) {
+    await page.keyboard.press("Tab");
+    await expect.poll(() => page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      return Boolean(dialog?.contains(document.activeElement));
+    })).toBe(true);
+  }
+  await page.keyboard.press("Shift+Tab");
+  await expect.poll(() => page.evaluate(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    return Boolean(dialog?.contains(document.activeElement));
+  })).toBe(true);
+  await page.keyboard.press("Space");
+  expect(backgroundWrites).toEqual([]);
+  await expect(page.getByText("walk forward").first()).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("status")).toContainText(/accepted|done/);
+  expect(backgroundWrites).toEqual([]);
 });
 
 test("08 cancel confirmation does not execute action", async ({ page }) => {
+  const chatBodies: unknown[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/chat")) {
+      chatBodies.push(request.postDataJSON());
+    }
+  });
   await page.goto("/");
   await page.getByLabel(/AI/).fill("walk forward");
   await page.getByRole("button", { name: /send/i }).click();
   await page.getByRole("button", { name: /cancel/i }).click();
   await expect(page.locator(".status-field", { hasText: "COMMAND" })).toContainText(/none|unknown/);
+  expect(chatBodies).toHaveLength(1);
+  expect(chatBodies.some((body) => typeof body === "object" && body !== null && "confirmationId" in body && Boolean((body as { confirmationId?: string | null }).confirmationId))).toBe(false);
 });
 
-test("11 simulator reset clears pending confirmation after reload", async ({ page }) => {
+test("11 UI reset simulator sends strict empty body and clears faults", async ({ page }) => {
+  const resetBodies: string[] = [];
+  page.on("dialog", (dialog) => dialog.accept());
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/simulator/reset")) {
+      resetBodies.push(request.postData() ?? "");
+    }
+  });
   await page.goto("/");
-  await page.getByLabel(/AI/).fill("walk forward");
-  await page.getByRole("button", { name: /send/i }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await resetSimulator(page.request);
-  await page.reload();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByLabel(/fault injection/i).fill("battery_low");
+  await page.getByRole("button", { name: /inject/i }).click();
+  await expect(page.locator(".fault-list span", { hasText: "battery_low" })).toBeVisible();
+  const resetResponse = page.waitForResponse((response) => response.url().endsWith("/api/simulator/reset") && response.request().method() === "POST");
+  await page.getByRole("button", { name: /reset simulator/i }).click();
+  const body = await resetResponse.then((response) => response.json() as Promise<{ generation?: number; state?: { faults?: string[] } }>);
+  await expect(page.getByText("No simulator faults")).toBeVisible();
+  expect(resetBodies).toContain("{}");
+  expect(typeof body.generation).toBe("number");
+  expect(body.state?.faults ?? []).toEqual([]);
 });
 
 test("12 session reset clears chat and keeps simulator fault", async ({ page }) => {
@@ -129,18 +178,16 @@ test("15 non-simulator health blocks actions", async ({ page }, testInfo) => {
 
 test("16 confirmation id is not persisted to DOM URL storage or console", async ({ page }) => {
   const consoleMessages: string[] = [];
-  let fullId = "";
   page.on("console", (message) => consoleMessages.push(message.text()));
-  page.on("response", async (response) => {
-    if (response.url().endsWith("/api/chat")) {
+  const confirmationIdPromise = page.waitForResponse((response) => response.url().endsWith("/api/chat")).then(async (response) => {
       const body = await response.json().catch(() => null) as { confirmationId?: string } | null;
-      if (body?.confirmationId) fullId = body.confirmationId;
-    }
+      return body?.confirmationId ?? "";
   });
   await page.goto("/");
   await page.getByLabel(/AI/).fill("walk forward");
   await page.getByRole("button", { name: /send/i }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  const fullId = await confirmationIdPromise;
   expect(Boolean(fullId)).toBe(true);
   const leak = await page.evaluate((id) => ({
     text: document.body.innerText.includes(id),
@@ -189,4 +236,16 @@ test("20 stale confirmation error is displayed", async ({ page }) => {
   await page.getByRole("button", { name: /send/i }).click();
   await page.getByRole("button", { name: /confirm action/i }).click();
   await expect(page.getByText("stale confirmation")).toBeVisible();
+});
+
+test("21 backend reset during pending confirmation does not report stale action success", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/AI/).fill("walk forward");
+  await page.getByRole("button", { name: /send/i }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await resetSimulator(page.request);
+  await page.getByRole("button", { name: /confirm action/i }).click();
+  await expect(page.getByText(/stale|未收到最终结果|confirmation/i).first()).toBeVisible();
+  await expect(page.locator(".status-field", { hasText: "COMMAND" })).toContainText(/none|unknown/);
+  await expect(page.getByRole("status")).not.toContainText(/accepted/);
 });

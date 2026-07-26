@@ -8,24 +8,25 @@ type Props = {
   limit: number;
   loading: boolean;
   error: string | null;
+  disabled?: boolean;
   onLimit: (limit: number) => void;
   onRefresh: () => void;
 };
 
-export function TimelinePanel({ timeline, limit, loading, error, onLimit, onRefresh }: Props) {
+export function TimelinePanel({ timeline, limit, loading, error, disabled = false, onLimit, onRefresh }: Props) {
   const events = timeline?.events ?? [];
   return (
     <section className="panel timeline-panel">
       <div className="panel-title">
         <h2>Timeline</h2>
-        <button type="button" className="secondary-button" onClick={onRefresh}>
+        <button type="button" className="secondary-button" onClick={onRefresh} disabled={disabled}>
           <RefreshCw aria-hidden="true" />
           Refresh
         </button>
       </div>
       <label className="limit-control" htmlFor="timeline-limit">
         Limit
-        <select id="timeline-limit" value={limit} onChange={(event) => onLimit(Number(event.target.value))}>
+        <select id="timeline-limit" value={limit} onChange={(event) => onLimit(Number(event.target.value))} disabled={disabled}>
           <option value={10}>10</option>
           <option value={20}>20</option>
           <option value={50}>50</option>

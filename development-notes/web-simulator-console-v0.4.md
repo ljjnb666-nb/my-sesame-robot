@@ -32,11 +32,13 @@ The browser only calls existing `/api` endpoints. Chat and quick commands use `P
 
 During confirmation submission, Cancel, Confirm, Enter, and Escape are disabled until the Runtime returns a final response. If the request times out, aborts, goes offline, or returns invalid JSON after submission, the UI reports the outcome as unknown, clears the in-memory confirmation, refreshes robot state and timeline, and does not retry automatically.
 
+The confirmation dialog isolates focus from the background app. The Header/Main wrapper is marked `inert` and `aria-hidden` while any confirmation dialog is open, and background write controls are disabled, including Chat Send, Quick Commands, Clear chat, Fault inject/clear, Reset simulator, Reset session, and Timeline controls. During submitting, focus is moved to the dialog itself and Tab, Shift+Tab, Space, Escape, and Enter cannot escape the dialog or activate background controls.
+
 ## API Integration
 
 Development and preview proxy `/api` to `http://127.0.0.1:8787`. `VITE_API_BASE_URL` can override the base URL at build/dev time without storing credentials in the frontend.
 
-The frontend only accepts `/api`, `http://127.0.0.1:<port>/api`, and `http://localhost:<port>/api`. Public, LAN, `0.0.0.0`, credentialed URLs, protocol-relative URLs, HTTPS URLs, and non-HTTP schemes are blocked before any network request. `VITE_DEV_API_TARGET` is validated with the same loopback-only rule in Vite proxy configuration.
+The frontend only accepts `/api`, `http://127.0.0.1:<port>/api`, and `http://localhost:<port>/api`. Absolute loopback URLs must have an exact `/api` path, with `/api/` normalized to `/api`; query strings, fragments, `/foo/api`, `/v1/api`, and `/api/extra` are rejected. Public, LAN, `0.0.0.0`, credentialed URLs, protocol-relative URLs, HTTPS URLs, and non-HTTP schemes are blocked before any network request. `VITE_DEV_API_TARGET` is validated with the same loopback-only rule in Vite proxy configuration.
 
 The client uses `AbortController`, request timeouts, JSON response checks, typed parsers, and a unified `ApiError`.
 
@@ -45,6 +47,8 @@ Nested API error envelopes in the form `{ "error": { "code": "...", "message": "
 Timeline event result rendering is allowlisted to `status`, `state`, `code`, `result`, and `reason`. The UI does not enumerate unknown result keys and does not stringify full backend objects.
 
 Health reconnects abort previous probes, ignore stale generations, and abort on unmount.
+
+Playwright trace, HAR, video, automatic screenshots, network archives, and request-body dumps are disabled for confirmation E2E because confirmation request bodies contain the in-memory confirmation token. CI checks generated browser artifacts and fails if trace/HAR/video/network/request-body files are present.
 
 ## Hardware
 

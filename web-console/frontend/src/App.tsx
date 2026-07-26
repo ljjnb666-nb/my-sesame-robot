@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { apiClient } from "./api/client";
 import { ApiError, ChatResponse } from "./api/types";
 import { ApiStatus } from "./components/ApiStatus";
@@ -22,6 +22,10 @@ const initialMessage = {
   createdAt: new Date(),
 };
 
+const OUTCOME_UNKNOWN_MESSAGE = "确认请求已提交，但未收到最终结果。请检查 Robot State 和 Timeline，不要直接重复执行。";
+
+type InertElement = HTMLElement & { inert?: boolean };
+
 function message(role: "user" | "assistant" | "system", text: string) {
   return {
     id: crypto.randomUUID(),
@@ -39,11 +43,19 @@ function confirmationState(response: ChatResponse): string | null {
   return String(confirmation.state);
 }
 
+function isExplicitConfirmationFailure(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (typeof error.status !== "number") return false;
+  if (error.status < 400 || error.status >= 500) return false;
+  return ["stale_confirmation", "invalid_request", "request_too_large", "not_found"].includes(error.code);
+}
+
 export function App() {
+  const backgroundRef = useRef<HTMLDivElement | null>(null);
   const { status, health, error: healthError, refresh: refreshHealth } = useApiHealth();
   const enabled = status === "online";
   const blocked = status === "blocked";
-  const controlsDisabled = !enabled || blocked;
+  const healthDisabled = !enabled || blocked;
   const robot = useRobotState(enabled);
   const [timelineLimit, setTimelineLimit] = useState(20);
   const timeline = useTimeline(enabled, timelineLimit);
@@ -52,6 +64,25 @@ export function App() {
   const [sending, setSending] = useState(false);
   const [confirmationMode, setConfirmationMode] = useState<"idle" | "submitting">("idle");
   const [banner, setBanner] = useState<string | null>(null);
+  const dialogOpen = chat.pendingConfirmation !== null;
+  const confirmationSubmitting = confirmationMode === "submitting";
+  const backgroundDisabled = healthDisabled || dialogOpen || confirmationSubmitting;
+
+  useEffect(() => {
+    const background = backgroundRef.current as InertElement | null;
+    if (!background) return;
+    if (dialogOpen) {
+      background.inert = true;
+      background.setAttribute("aria-hidden", "true");
+      return () => {
+        background.inert = false;
+        background.removeAttribute("aria-hidden");
+      };
+    }
+    background.inert = false;
+    background.removeAttribute("aria-hidden");
+    return undefined;
+  }, [dialogOpen]);
 
   const refreshRuntime = useCallback(() => {
     void robot.refresh();
@@ -86,7 +117,7 @@ export function App() {
   const sendChat = useCallback(
     async (overrideText?: string) => {
       const text = (overrideText ?? input).trim();
-      if (!text || text.length > 500 || controlsDisabled || sending) return;
+      if (!text || text.length > 500 || backgroundDisabled || sending) return;
       dispatch({ type: "append", message: message("user", text) });
       if (!overrideText) setInput("");
       setSending(true);
@@ -101,7 +132,7 @@ export function App() {
         setSending(false);
       }
     },
-    [controlsDisabled, handleResponse, input, sending],
+    [backgroundDisabled, handleResponse, input, sending],
   );
 
   const confirmPending = useCallback(async () => {
@@ -119,12 +150,11 @@ export function App() {
       dispatch({ type: "setConfirmation", confirmation: null });
       setConfirmationMode("idle");
       refreshRuntime();
-      if (caught instanceof ApiError && ["timeout", "offline", "abort", "invalid_json"].includes(caught.code)) {
-        const unknown = "确认请求已提交，但未收到最终结果。请检查 Robot State 和 Timeline，不要直接重复执行。";
-        setBanner(unknown);
-        dispatch({ type: "append", message: message("system", unknown) });
-      } else {
+      if (isExplicitConfirmationFailure(caught)) {
         dispatch({ type: "append", message: message("system", caught instanceof Error ? caught.message : "Confirmation failed.") });
+      } else {
+        setBanner(OUTCOME_UNKNOWN_MESSAGE);
+        dispatch({ type: "append", message: message("system", OUTCOME_UNKNOWN_MESSAGE) });
       }
     } finally {
       setSending(false);
@@ -138,6 +168,7 @@ export function App() {
   }, [confirmationMode]);
 
   const resetSession = async () => {
+    if (backgroundDisabled) return;
     const response = await apiClient.resetSession();
     dispatch({ type: "clear" });
     dispatch({ type: "append", message: message("system", `Session reset. runtimeConfirmationsRevoked=${response.runtimeConfirmationsRevoked}`) });
@@ -145,6 +176,7 @@ export function App() {
   };
 
   const resetSimulator = async () => {
+    if (backgroundDisabled) return;
     await apiClient.resetSimulator();
     dispatch({ type: "setConfirmation", confirmation: null });
     setConfirmationMode("idle");
@@ -153,37 +185,62 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <AppHeader status={status} health={health} error={healthError} onReconnect={() => void refreshHealth()} />
-      <main>
-        <ApiStatus status={status} error={healthError} />
-        <ErrorBanner message={banner} />
-        {robot.error && <ErrorBanner message={robot.error} />}
-        <div className="dashboard-grid">
-          <ChatPanel messages={chat.messages} input={input} disabled={controlsDisabled} sending={sending} onInput={setInput} onSend={(text) => void sendChat(text)} onClear={() => dispatch({ type: "clear" })} />
-          <RobotOverview state={robot.data} lastUpdatedAt={robot.lastUpdatedAt} />
-          <div className="right-column">
-            <SimulatorControls
-              disabled={controlsDisabled}
-              faults={robot.data?.faults ?? []}
-              onInject={async (fault) => {
-                await apiClient.injectFault(fault);
-                refreshRuntime();
+      <div ref={backgroundRef} data-testid="app-background">
+        <AppHeader status={status} health={health} error={healthError} onReconnect={() => void refreshHealth()} />
+        <main>
+          <ApiStatus status={status} error={healthError} />
+          <ErrorBanner message={banner} />
+          {robot.error && <ErrorBanner message={robot.error} />}
+          <div className="dashboard-grid">
+            <ChatPanel
+              messages={chat.messages}
+              input={input}
+              disabled={backgroundDisabled}
+              sending={sending}
+              onInput={setInput}
+              onSend={(text) => void sendChat(text)}
+              onClear={() => {
+                if (!backgroundDisabled) dispatch({ type: "clear" });
               }}
-              onClear={async (fault) => {
-                await apiClient.clearFault(fault);
-                refreshRuntime();
-              }}
-              onClearAll={async () => {
-                await apiClient.clearFault("all");
-                refreshRuntime();
-              }}
-              onResetSimulator={resetSimulator}
-              onResetSession={resetSession}
             />
-            <TimelinePanel timeline={timeline.data} limit={timelineLimit} loading={timeline.loading} error={timeline.error} onLimit={setTimelineLimit} onRefresh={() => void timeline.refresh()} />
+            <RobotOverview state={robot.data} lastUpdatedAt={robot.lastUpdatedAt} />
+            <div className="right-column">
+              <SimulatorControls
+                disabled={backgroundDisabled}
+                faults={robot.data?.faults ?? []}
+                onInject={async (fault) => {
+                  if (backgroundDisabled) return;
+                  await apiClient.injectFault(fault);
+                  refreshRuntime();
+                }}
+                onClear={async (fault) => {
+                  if (backgroundDisabled) return;
+                  await apiClient.clearFault(fault);
+                  refreshRuntime();
+                }}
+                onClearAll={async () => {
+                  if (backgroundDisabled) return;
+                  await apiClient.clearFault("all");
+                  refreshRuntime();
+                }}
+                onResetSimulator={resetSimulator}
+                onResetSession={resetSession}
+              />
+              <TimelinePanel
+                timeline={timeline.data}
+                limit={timelineLimit}
+                loading={timeline.loading}
+                error={timeline.error}
+                disabled={dialogOpen}
+                onLimit={setTimelineLimit}
+                onRefresh={() => {
+                  if (!dialogOpen) void timeline.refresh();
+                }}
+              />
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
       <ConfirmationDialog confirmation={chat.pendingConfirmation} mode={confirmationMode} onConfirm={() => void confirmPending()} onCancel={cancelPending} />
     </div>
   );

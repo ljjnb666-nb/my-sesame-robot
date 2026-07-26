@@ -23,6 +23,8 @@
 - No horizontal overflow was detected by Playwright at 390px.
 - No horizontal overflow was detected by Playwright at 1024px or 1280px.
 - Submitting confirmation state disables Cancel, Confirm, Enter, and Escape and shows the Runtime wait message.
+- Submitting confirmation state keeps focus inside the dialog through Tab, Shift+Tab, Space, Escape, and Enter.
+- Background app content is inert while the dialog is open.
 - Offline and blocked states visibly disable command controls and show reconnect affordance.
 
 ## Screenshots

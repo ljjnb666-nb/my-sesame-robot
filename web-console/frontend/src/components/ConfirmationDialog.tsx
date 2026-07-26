@@ -11,28 +11,75 @@ type Props = {
   onCancel: () => void;
 };
 
+function focusDialog(dialog: HTMLDivElement | null) {
+  dialog?.focus();
+}
+
 export function ConfirmationDialog({ confirmation, mode, onConfirm, onCancel }: Props) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const wasOpenRef = useRef(false);
   const submitting = mode === "submitting";
 
   useEffect(() => {
+    const open = confirmation !== null;
+    if (open && !wasOpenRef.current) {
+      openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
+    if (!open && wasOpenRef.current) {
+      openerRef.current?.focus();
+      openerRef.current = null;
+    }
+    wasOpenRef.current = open;
+  }, [confirmation]);
+
+  useEffect(() => {
     if (!confirmation) return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (!submitting) cancelRef.current?.focus();
+    if (submitting) {
+      focusDialog(dialogRef.current);
+    } else {
+      cancelRef.current?.focus();
+    }
+  }, [confirmation, submitting]);
+
+  useEffect(() => {
+    if (!confirmation) return;
+    const keepFocusInside = () => {
+      const dialog = dialogRef.current;
+      if (!dialog || dialog.contains(document.activeElement)) return;
+      if (submitting) {
+        focusDialog(dialog);
+      } else {
+        cancelRef.current?.focus();
+      }
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         if (!submitting) onCancel();
+        return;
       }
-      if (event.key === "Enter") {
+      if (event.key === "Enter" || (submitting && event.key === " ")) {
         event.preventDefault();
+        event.stopPropagation();
+        return;
       }
       if (event.key === "Tab" && dialogRef.current) {
         const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>("button:not(:disabled), [tabindex='0']"));
-        const first = focusable[0] ?? dialogRef.current;
-        const last = focusable[focusable.length - 1] ?? dialogRef.current;
-        if (event.shiftKey && document.activeElement === first) {
+        if (focusable.length === 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          focusDialog(dialogRef.current);
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (!dialogRef.current.contains(document.activeElement)) {
+          event.preventDefault();
+          first.focus();
+        } else if (event.shiftKey && document.activeElement === first) {
           event.preventDefault();
           last.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -41,10 +88,11 @@ export function ConfirmationDialog({ confirmation, mode, onConfirm, onCancel }: 
         }
       }
     };
-    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("focusin", keepFocusInside, true);
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      if (!submitting) previous?.focus();
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("focusin", keepFocusInside, true);
     };
   }, [confirmation, onCancel, submitting]);
 

@@ -26,14 +26,15 @@ export function validateApiBase(value: string | undefined): ApiBaseResult {
     return invalidApiBase();
   }
 
-  const path = parsed.pathname.replace(/\/$/, "");
   if (
     parsed.protocol !== "http:" ||
     !isAllowedHost(parsed.hostname) ||
     Boolean(parsed.username || parsed.password) ||
-    !path.endsWith("/api")
+    (parsed.pathname !== "/api" && parsed.pathname !== "/api/") ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
   ) {
     return invalidApiBase();
   }
-  return { ok: true, base: raw.replace(/\/$/, "") };
+  return { ok: true, base: `${parsed.origin}/api` };
 }
