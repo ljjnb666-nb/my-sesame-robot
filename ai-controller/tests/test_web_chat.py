@@ -1,15 +1,14 @@
-import tempfile
 import unittest
 
 from sesame_ai_robot.ai_models import RobotReply
-from sesame_ai_robot.web.service import RobotSimulatorService
+from sesame_ai_robot.web.service import WebServiceError
+
+from web_test_utils import make_service
 
 
 class WebChatTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.service = RobotSimulatorService(memory_storage_path=f"{self.tmp.name}/memory.json")
+        self.service, _tmp = make_service(self)
 
     def test_query_battery(self):
         reply = self.service.chat("battery")
@@ -19,7 +18,7 @@ class WebChatTest(unittest.TestCase):
     def test_query_state(self):
         reply = self.service.chat("status")
         self.assertEqual(reply["status"], "ok")
-        self.assertIn("state", reply["structured"])
+        self.assertEqual(reply["structured"]["state"]["batteryPercent"], 80)
 
     def test_low_risk_wave_executes(self):
         reply = self.service.chat("wave")
@@ -52,17 +51,18 @@ class WebChatTest(unittest.TestCase):
         self.assertEqual(replay["status"], "failed")
         self.assertEqual(replay["structured"]["runtime"]["confirmation"]["state"], "already_used")
 
-    def test_wrong_action_text_rejected_as_stale_web_confirmation(self):
+    def test_pending_text_mismatch_is_stale_confirmation(self):
         requested = self.service.chat("walk")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(WebServiceError) as ctx:
             self.service.chat("stand", requested["confirmationId"])
+        self.assertEqual(ctx.exception.code, "stale_confirmation")
 
-    def test_context_changed_reaches_runtime(self):
+    def test_context_changed_is_deterministic(self):
         requested = self.service.chat("walk")
-        self.service.inject_fault("communication_lost")
+        self.service.inject_fault("battery_low")
         reply = self.service.chat("walk", requested["confirmationId"])
         self.assertEqual(reply["status"], "failed")
-        self.assertIn(reply["structured"]["runtime"]["confirmation"]["state"], {"context_changed", "action_mismatch"})
+        self.assertEqual(reply["structured"]["runtime"]["confirmation"]["state"], "context_changed")
 
     def test_unknown_confirmation_reaches_runtime(self):
         reply = self.service.chat("walk", "unknown-confirmation-id")
@@ -70,8 +70,9 @@ class WebChatTest(unittest.TestCase):
         self.assertEqual(reply["structured"]["runtime"]["confirmation"]["state"], "unknown_id")
 
     def test_confirmation_id_length_rejected(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(WebServiceError) as ctx:
             self.service.chat("walk", "x" * 129)
+        self.assertEqual(ctx.exception.code, "invalid_request")
 
     def test_chat_calls_ai_interaction_loop_handle_text(self):
         calls = []
@@ -80,7 +81,7 @@ class WebChatTest(unittest.TestCase):
             calls.append((text, confirmation_id))
             return RobotReply("req", "session", "ok", "ok", "ok")
 
-        self.service.loop.handle_text = fake_handle_text
+        self.service._loop.handle_text = fake_handle_text
         reply = self.service.chat("battery", "confirm")
         self.assertEqual(calls, [("battery", "confirm")])
         self.assertEqual(reply["status"], "ok")
