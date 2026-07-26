@@ -45,6 +45,13 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web-console/frontend/package-lock.json
+
       - name: Repository hygiene
         run: |
           if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
@@ -148,6 +155,54 @@ jobs:
             exit $LASTEXITCODE
           }
           "## Python syntax validation`n`n- Result: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Frontend dependencies
+        working-directory: web-console/frontend
+        run: |
+          npm ci
+
+      - name: Frontend lint
+        working-directory: web-console/frontend
+        run: |
+          npm run lint
+
+      - name: Frontend typecheck
+        working-directory: web-console/frontend
+        run: |
+          npm run typecheck
+
+      - name: Frontend unit tests
+        working-directory: web-console/frontend
+        run: |
+          npm run test:unit
+
+      - name: Frontend build
+        working-directory: web-console/frontend
+        run: |
+          npm run build
+
+      - name: Install Playwright browser
+        working-directory: web-console/frontend
+        run: |
+          npx playwright install chromium
+
+      - name: Frontend E2E
+        working-directory: web-console/frontend
+        env:
+          SESAME_AI_PROVIDER: mock
+        run: |
+          npm run test:e2e
+
+      - name: Upload frontend browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sesame-web-console-browser-${{ env.SHORT_SHA }}
+          path: |
+            web-console/frontend/test-results/**
+            web-console/frontend/playwright-report/**
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Set up Arduino CLI
         run: |
