@@ -8,6 +8,7 @@ dependencies = []
 [project.optional-dependencies]
 web = [
     "fastapi>=0.115,<1",
+    "httpx2>=2,<3",
     "pydantic>=2,<3",
     "uvicorn>=0.30,<1",
 ]
