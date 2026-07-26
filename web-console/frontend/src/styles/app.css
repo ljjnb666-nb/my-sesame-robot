@@ -476,6 +476,16 @@ main {
   font-size: 18px;
 }
 
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .confirmation-dialog dl {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);

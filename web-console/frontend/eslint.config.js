@@ -24,4 +24,10 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "error",
     },
   },
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 );

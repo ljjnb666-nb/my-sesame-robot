@@ -192,6 +192,7 @@ jobs:
           SESAME_AI_PROVIDER: mock
         run: |
           npm run test:e2e
+          Get-Content playwright-report\e2e-summary.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Upload frontend browser artifacts
         if: always()

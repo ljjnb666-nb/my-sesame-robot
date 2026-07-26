@@ -24,7 +24,10 @@ export type TimelineEvent = {
   timestamp?: string;
   eventType?: string;
   action?: string;
-  result?: string | Record<string, unknown>;
+  resultStatus?: string;
+  resultState?: string;
+  resultCode?: string;
+  resultReason?: string;
   reason?: string;
   safetySeverity?: string;
   runtimeMode?: string;
@@ -77,7 +80,14 @@ export type ApiErrorCode =
   | "offline"
   | "invalid_json"
   | "invalid_response"
+  | "invalid_api_base"
   | "unsafe_mode"
+  | "invalid_request"
+  | "stale_confirmation"
+  | "unknown_fault"
+  | "request_too_large"
+  | "not_found"
+  | "internal_error"
   | "api_error";
 
 export class ApiError extends Error {

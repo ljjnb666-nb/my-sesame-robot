@@ -3,6 +3,17 @@ import { defineConfig } from "vitest/config";
 
 const apiTarget = process.env.VITE_DEV_API_TARGET ?? "http://127.0.0.1:8787";
 
+function assertLoopbackTarget(value: string): string {
+  const parsed = new URL(value);
+  const loopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+  if (parsed.protocol !== "http:" || !loopback || parsed.username || parsed.password) {
+    throw new Error("VITE_DEV_API_TARGET must be an HTTP loopback URL.");
+  }
+  return value;
+}
+
+const safeApiTarget = assertLoopbackTarget(apiTarget);
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -17,7 +28,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": {
-        target: apiTarget,
+        target: safeApiTarget,
         changeOrigin: false,
       },
     },
@@ -28,7 +39,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": {
-        target: apiTarget,
+        target: safeApiTarget,
         changeOrigin: false,
       },
     },

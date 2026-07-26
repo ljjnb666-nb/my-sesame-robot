@@ -1,6 +1,6 @@
 import { useCallback, useReducer, useState } from "react";
 import { apiClient } from "./api/client";
-import { ChatResponse } from "./api/types";
+import { ApiError, ChatResponse } from "./api/types";
 import { ApiStatus } from "./components/ApiStatus";
 import { AppHeader } from "./components/AppHeader";
 import { ChatPanel } from "./components/ChatPanel";
@@ -50,6 +50,7 @@ export function App() {
   const [chat, dispatch] = useReducer(simulatorReducer, { messages: [initialMessage], pendingConfirmation: null });
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [confirmationMode, setConfirmationMode] = useState<"idle" | "submitting">("idle");
   const [banner, setBanner] = useState<string | null>(null);
 
   const refreshRuntime = useCallback(() => {
@@ -71,6 +72,7 @@ export function App() {
             message: response.reason ?? response.message ?? "Robot action requires explicit browser confirmation.",
           },
         });
+        setConfirmationMode("idle");
       }
       const result = confirmationState(response);
       if (result) {
@@ -106,23 +108,34 @@ export function App() {
     const pending = chat.pendingConfirmation;
     if (!pending || sending) return;
     setSending(true);
+    setConfirmationMode("submitting");
     setBanner(null);
     try {
       const response = await apiClient.chat({ text: pending.originalText, confirmationId: pending.confirmationId });
       dispatch({ type: "setConfirmation", confirmation: null });
+      setConfirmationMode("idle");
       handleResponse(pending.originalText, response);
     } catch (caught) {
       dispatch({ type: "setConfirmation", confirmation: null });
-      dispatch({ type: "append", message: message("system", caught instanceof Error ? caught.message : "Confirmation failed.") });
+      setConfirmationMode("idle");
+      refreshRuntime();
+      if (caught instanceof ApiError && ["timeout", "offline", "abort", "invalid_json"].includes(caught.code)) {
+        const unknown = "确认请求已提交，但未收到最终结果。请检查 Robot State 和 Timeline，不要直接重复执行。";
+        setBanner(unknown);
+        dispatch({ type: "append", message: message("system", unknown) });
+      } else {
+        dispatch({ type: "append", message: message("system", caught instanceof Error ? caught.message : "Confirmation failed.") });
+      }
     } finally {
       setSending(false);
     }
-  }, [chat.pendingConfirmation, handleResponse, sending]);
+  }, [chat.pendingConfirmation, handleResponse, refreshRuntime, sending]);
 
   const cancelPending = useCallback(() => {
+    if (confirmationMode === "submitting") return;
     dispatch({ type: "setConfirmation", confirmation: null });
     setBanner("本次网页确认已取消，机器人动作未执行。");
-  }, []);
+  }, [confirmationMode]);
 
   const resetSession = async () => {
     const response = await apiClient.resetSession();
@@ -134,6 +147,7 @@ export function App() {
   const resetSimulator = async () => {
     await apiClient.resetSimulator();
     dispatch({ type: "setConfirmation", confirmation: null });
+    setConfirmationMode("idle");
     refreshRuntime();
   };
 
@@ -170,7 +184,7 @@ export function App() {
           </div>
         </div>
       </main>
-      <ConfirmationDialog confirmation={chat.pendingConfirmation} busy={sending} onConfirm={() => void confirmPending()} onCancel={cancelPending} />
+      <ConfirmationDialog confirmation={chat.pendingConfirmation} mode={confirmationMode} onConfirm={() => void confirmPending()} onCancel={cancelPending} />
     </div>
   );
 }

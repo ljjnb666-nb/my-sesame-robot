@@ -10,9 +10,22 @@ import {
   TimelineEvent,
   TimelineResponse,
 } from "./types";
+import { validateApiBase } from "./base";
+import { redactSensitiveText } from "./errors";
 
 const DEFAULT_TIMEOUT_MS = 8_000;
-const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "/api";
+const apiBaseResult = validateApiBase(import.meta.env.VITE_API_BASE_URL as string | undefined);
+const apiBase = apiBaseResult.ok ? apiBaseResult.base : "/api";
+const ERROR_MESSAGE_LIMIT = 240;
+const ERROR_CODE_LIMIT = 64;
+const KNOWN_API_CODES = new Set([
+  "invalid_request",
+  "stale_confirmation",
+  "unknown_fault",
+  "request_too_large",
+  "not_found",
+  "internal_error",
+]);
 
 type RequestOptions = {
   signal?: AbortSignal;
@@ -43,6 +56,20 @@ function stringsField(record: Record<string, unknown>, key: string): string[] {
   return Array.isArray(record[key]) ? record[key].filter((item): item is string => typeof item === "string") : [];
 }
 
+function clippedSafeMessage(value: string): string {
+  return redactSensitiveText(value).slice(0, ERROR_MESSAGE_LIMIT);
+}
+
+function parseApiError(payload: unknown, status: number): ApiError {
+  if (!isRecord(payload) || !isRecord(payload.error)) {
+    return new ApiError("api_error", "API 请求失败。", { status });
+  }
+  const rawCode = payload.error.code;
+  const code = typeof rawCode === "string" && rawCode.length <= ERROR_CODE_LIMIT && KNOWN_API_CODES.has(rawCode) ? rawCode : "api_error";
+  const message = typeof payload.error.message === "string" ? clippedSafeMessage(payload.error.message) : "API 请求失败。";
+  return new ApiError(code as ApiError["code"], message, { status });
+}
+
 function joinSignals(external: AbortSignal | undefined, timeoutMs: number): { signal: AbortSignal; cleanup: () => void } {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(new DOMException("Timeout", "TimeoutError")), timeoutMs);
@@ -61,6 +88,7 @@ function joinSignals(external: AbortSignal | undefined, timeoutMs: number): { si
 }
 
 async function requestJson(path: string, init: RequestInit = {}, options: RequestOptions = {}): Promise<unknown> {
+  if (!apiBaseResult.ok) throw apiBaseResult.error;
   const { signal, cleanup } = joinSignals(options.signal, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   try {
     const response = await fetch(`${apiBase}${path}`, {
@@ -78,8 +106,7 @@ async function requestJson(path: string, init: RequestInit = {}, options: Reques
     }
     const payload: unknown = await response.json();
     if (!response.ok) {
-      const message = isRecord(payload) && typeof payload.message === "string" ? payload.message : "API 请求失败。";
-      throw new ApiError("api_error", message, { status: response.status });
+      throw parseApiError(payload, response.status);
     }
     return payload;
   } catch (error) {
@@ -132,13 +159,16 @@ export function parseRobotState(payload: unknown): RobotStateResponse {
 
 function parseTimelineEvent(value: unknown): TimelineEvent | null {
   if (!isRecord(value)) return null;
-  const result = typeof value.result === "string" || isRecord(value.result) ? value.result : undefined;
+  const result = isRecord(value.result) ? value.result : {};
   return {
     time: nullableString(value, "time") ?? nullableString(value, "createdAt") ?? undefined,
     timestamp: nullableString(value, "timestamp") ?? undefined,
     eventType: nullableString(value, "eventType") ?? undefined,
     action: nullableString(value, "action") ?? undefined,
-    result,
+    resultStatus: nullableString(result, "status") ?? undefined,
+    resultState: nullableString(result, "state") ?? undefined,
+    resultCode: nullableString(result, "code") ?? nullableString(result, "result") ?? undefined,
+    resultReason: nullableString(result, "reason") ?? undefined,
     reason: nullableString(value, "reason") ?? undefined,
     safetySeverity: nullableString(value, "safetySeverity") ?? undefined,
     runtimeMode: nullableString(value, "runtimeMode") ?? undefined,

@@ -13,7 +13,7 @@ const pending = {
 
 describe("ConfirmationDialog", () => {
   it("renders fingerprint but not confirmation id", () => {
-    render(<ConfirmationDialog confirmation={pending} busy={false} onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("fp-123")).toBeInTheDocument();
     expect(screen.queryByText(pending.confirmationId)).toBeNull();
@@ -23,7 +23,7 @@ describe("ConfirmationDialog", () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
-    render(<ConfirmationDialog confirmation={pending} busy={false} onConfirm={onConfirm} onCancel={onCancel} />);
+    render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={onConfirm} onCancel={onCancel} />);
     await user.keyboard("{Enter}");
     expect(onConfirm).not.toHaveBeenCalled();
     await user.keyboard("{Escape}");
@@ -31,7 +31,35 @@ describe("ConfirmationDialog", () => {
   });
 
   it("confirm button is not autofocus", () => {
-    render(<ConfirmationDialog confirmation={pending} busy={false} onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
     expect(screen.getByRole("button", { name: /confirm action/i })).not.toHaveFocus();
+  });
+
+  it("does not cancel with Escape while submitting", async () => {
+    const user = userEvent.setup();
+    const onCancel = vi.fn();
+    render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={vi.fn()} onCancel={onCancel} />);
+    await user.keyboard("{Escape}");
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("disables both buttons while submitting", () => {
+    render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /confirm action/i })).toBeDisabled();
+  });
+
+  it("does not confirm with Enter while submitting", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={onConfirm} onCancel={vi.fn()} />);
+    await user.keyboard("{Enter}");
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("shows runtime wait text while submitting", () => {
+    render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByText(/Runtime/)).toBeInTheDocument();
   });
 });

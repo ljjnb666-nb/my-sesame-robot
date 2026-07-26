@@ -30,11 +30,21 @@ The browser only calls existing `/api` endpoints. Chat and quick commands use `P
 
 `confirmationId` is retained only in current React memory for the pending dialog. It is not rendered, logged, placed in DOM data attributes, URL parameters, or browser storage.
 
+During confirmation submission, Cancel, Confirm, Enter, and Escape are disabled until the Runtime returns a final response. If the request times out, aborts, goes offline, or returns invalid JSON after submission, the UI reports the outcome as unknown, clears the in-memory confirmation, refreshes robot state and timeline, and does not retry automatically.
+
 ## API Integration
 
 Development and preview proxy `/api` to `http://127.0.0.1:8787`. `VITE_API_BASE_URL` can override the base URL at build/dev time without storing credentials in the frontend.
 
+The frontend only accepts `/api`, `http://127.0.0.1:<port>/api`, and `http://localhost:<port>/api`. Public, LAN, `0.0.0.0`, credentialed URLs, protocol-relative URLs, HTTPS URLs, and non-HTTP schemes are blocked before any network request. `VITE_DEV_API_TARGET` is validated with the same loopback-only rule in Vite proxy configuration.
+
 The client uses `AbortController`, request timeouts, JSON response checks, typed parsers, and a unified `ApiError`.
+
+Nested API error envelopes in the form `{ "error": { "code": "...", "message": "..." } }` are parsed strictly. Known safe codes include `invalid_request`, `stale_confirmation`, `unknown_fault`, `request_too_large`, `not_found`, and `internal_error`; unknown or malformed envelopes fall back to `api_error` without stringifying arbitrary objects. Displayed messages are length-limited and redacted for confirmation IDs, tokens, and local paths.
+
+Timeline event result rendering is allowlisted to `status`, `state`, `code`, `result`, and `reason`. The UI does not enumerate unknown result keys and does not stringify full backend objects.
+
+Health reconnects abort previous probes, ignore stale generations, and abort on unmount.
 
 ## Hardware
 

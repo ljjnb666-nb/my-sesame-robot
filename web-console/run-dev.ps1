@@ -14,6 +14,16 @@ if (-not (Test-Path (Join-Path $FrontendDir "node_modules"))) {
   Write-Error "Missing frontend node_modules. Run: cd web-console/frontend; npm install"
 }
 
+Push-Location $AiDir
+try {
+  python -c "import fastapi, uvicorn, pydantic; import sesame_ai_robot.web.app" | Out-Null
+} finally {
+  Pop-Location
+}
+if ($LASTEXITCODE -ne 0) {
+  Write-Error "Missing Python web extras. Run: cd ai-controller; python -m pip install -e `".[web]`""
+}
+
 $env:SESAME_AI_PROVIDER = if ($env:SESAME_AI_PROVIDER) { $env:SESAME_AI_PROVIDER } else { "mock" }
 Write-Host "Sesame Web Simulator Console"
 Write-Host "API:      http://127.0.0.1:8787"
@@ -22,6 +32,7 @@ Write-Host "REAL HARDWARE DISABLED"
 
 $api = $null
 $frontend = $null
+$exitCode = 0
 try {
   $api = Start-Process powershell -WindowStyle Hidden -PassThru -WorkingDirectory $AiDir -ArgumentList @(
     "-NoProfile",
@@ -33,7 +44,21 @@ try {
     "-ExecutionPolicy", "Bypass",
     "-Command", "npm run dev"
   )
-  Wait-Process -Id $api.Id, $frontend.Id
+
+  while ($true) {
+    Start-Sleep -Milliseconds 500
+    foreach ($proc in @($api, $frontend)) {
+      if ($proc -and $proc.HasExited) {
+        $exitCode = $proc.ExitCode
+        if ($exitCode -eq 0) { $exitCode = 1 }
+        Write-Host "Child process exited: PID=$($proc.Id), exit=$($proc.ExitCode)"
+        break
+      }
+    }
+    if (($api -and $api.HasExited) -or ($frontend -and $frontend.HasExited)) {
+      break
+    }
+  }
 } finally {
   foreach ($proc in @($frontend, $api)) {
     if ($proc -and -not $proc.HasExited) {
@@ -41,3 +66,5 @@ try {
     }
   }
 }
+
+exit $exitCode
