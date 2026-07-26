@@ -12,17 +12,17 @@ import { TimelinePanel } from "./components/TimelinePanel";
 import { useApiHealth } from "./hooks/useApiHealth";
 import { useRobotState } from "./hooks/useRobotState";
 import { useTimeline } from "./hooks/useTimeline";
+import { apiErrorMessage, chatResponseText, confirmationResultLabel, t } from "./i18n/zh-CN";
 import { simulatorReducer } from "./state/simulatorReducer";
-import { chatResponseText } from "./state/simulatorTypes";
 
 const initialMessage = {
   id: "welcome",
   role: "system" as const,
-  text: "Connected to local Sesame Robot Simulator. Real hardware is disabled.",
+  text: t("chat.initial"),
   createdAt: new Date(),
 };
 
-const OUTCOME_UNKNOWN_MESSAGE = "确认请求已提交，但未收到最终结果。请检查 Robot State 和 Timeline，不要直接重复执行。";
+const OUTCOME_UNKNOWN_MESSAGE = t("chat.outcomeUnknown");
 
 type InertElement = HTMLElement & { inert?: boolean };
 
@@ -40,7 +40,7 @@ function confirmationState(response: ChatResponse): string | null {
   if (typeof runtime !== "object" || runtime === null || !("confirmation" in runtime)) return null;
   const confirmation = runtime.confirmation;
   if (typeof confirmation !== "object" || confirmation === null || !("state" in confirmation)) return null;
-  return String(confirmation.state);
+  return confirmationResultLabel((confirmation as { state?: unknown }).state);
 }
 
 function isExplicitConfirmationFailure(error: unknown): boolean {
@@ -64,6 +64,7 @@ export function App() {
   const [sending, setSending] = useState(false);
   const [confirmationMode, setConfirmationMode] = useState<"idle" | "submitting">("idle");
   const [banner, setBanner] = useState<string | null>(null);
+  const [bannerTone, setBannerTone] = useState<"success" | "info" | "warning" | "danger">("info");
   const dialogOpen = chat.pendingConfirmation !== null;
   const confirmationSubmitting = confirmationMode === "submitting";
   const backgroundDisabled = healthDisabled || dialogOpen || confirmationSubmitting;
@@ -100,14 +101,15 @@ export function App() {
             confirmationId: response.confirmationId,
             action: response.action ?? "unknown_action",
             fingerprint: response.confirmationFingerprint ?? null,
-            message: response.reason ?? response.message ?? "Robot action requires explicit browser confirmation.",
+            message: response.reason ?? response.message ?? t("chat.confirmationRequired"),
           },
         });
         setConfirmationMode("idle");
       }
       const result = confirmationState(response);
       if (result) {
-        setBanner(`Confirmation result: ${result}`);
+        setBannerTone(response.status === "ok" ? "success" : "info");
+        setBanner(`确认结果：${result}`);
       }
       refreshRuntime();
     },
@@ -127,7 +129,7 @@ export function App() {
         handleResponse(text, response);
       } catch (caught) {
         if (!overrideText) setInput(text);
-        dispatch({ type: "append", message: message("system", caught instanceof Error ? caught.message : "Chat request failed.") });
+        dispatch({ type: "append", message: message("system", apiErrorMessage(caught) || t("chat.requestFailed")) });
       } finally {
         setSending(false);
       }
@@ -151,8 +153,9 @@ export function App() {
       setConfirmationMode("idle");
       refreshRuntime();
       if (isExplicitConfirmationFailure(caught)) {
-        dispatch({ type: "append", message: message("system", caught instanceof Error ? caught.message : "Confirmation failed.") });
+        dispatch({ type: "append", message: message("system", apiErrorMessage(caught)) });
       } else {
+        setBannerTone("warning");
         setBanner(OUTCOME_UNKNOWN_MESSAGE);
         dispatch({ type: "append", message: message("system", OUTCOME_UNKNOWN_MESSAGE) });
       }
@@ -164,14 +167,15 @@ export function App() {
   const cancelPending = useCallback(() => {
     if (confirmationMode === "submitting") return;
     dispatch({ type: "setConfirmation", confirmation: null });
-    setBanner("本次网页确认已取消，机器人动作未执行。");
+    setBannerTone("info");
+    setBanner(t("chat.confirmationCanceled"));
   }, [confirmationMode]);
 
   const resetSession = async () => {
     if (backgroundDisabled) return;
     const response = await apiClient.resetSession();
     dispatch({ type: "clear" });
-    dispatch({ type: "append", message: message("system", `Session reset. runtimeConfirmationsRevoked=${response.runtimeConfirmationsRevoked}`) });
+    dispatch({ type: "append", message: message("system", t("chat.sessionReset", { value: response.runtimeConfirmationsRevoked ? "是" : "否" })) });
     refreshRuntime();
   };
 
@@ -189,8 +193,8 @@ export function App() {
         <AppHeader status={status} health={health} error={healthError} onReconnect={() => void refreshHealth()} />
         <main>
           <ApiStatus status={status} error={healthError} />
-          <ErrorBanner message={banner} />
-          {robot.error && <ErrorBanner message={robot.error} />}
+          <ErrorBanner message={banner} tone={bannerTone} />
+          {robot.error && <ErrorBanner message={robot.error} tone="danger" />}
           <div className="dashboard-grid">
             <ChatPanel
               messages={chat.messages}

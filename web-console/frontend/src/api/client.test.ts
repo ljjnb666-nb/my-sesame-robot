@@ -55,7 +55,7 @@ describe("apiClient", () => {
 
   it("falls back on non-string error message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: { code: "invalid_request", message: { html: "<b>x</b>" } } }, { status: 400 })));
-    await expect(apiClient.health()).rejects.toThrow("API request failed");
+    await expect(apiClient.health()).rejects.toThrow("接口请求失败。");
   });
 
   it("clips long error messages", async () => {

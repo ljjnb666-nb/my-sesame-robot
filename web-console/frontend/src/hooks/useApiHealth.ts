@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "../api/client";
 import { ApiError, HealthResponse } from "../api/types";
+import { apiErrorMessage } from "../i18n/zh-CN";
 
 export type ApiHealthStatus = "connecting" | "online" | "offline" | "blocked";
 
 function statusFromError(error: unknown): ApiHealthStatus {
   return error instanceof ApiError && (error.code === "unsafe_mode" || error.code === "invalid_api_base") ? "blocked" : "offline";
-}
-
-function messageFromError(error: unknown): string {
-  return error instanceof Error ? error.message : "无法连接本地模拟器 API。";
 }
 
 export function useApiHealth() {
@@ -35,7 +32,7 @@ export function useApiHealth() {
     } catch (caught) {
       if (generationRef.current !== generation || controller.signal.aborted) return;
       setHealth(null);
-      setError(messageFromError(caught));
+      setError(apiErrorMessage(caught));
       setStatus(statusFromError(caught));
     }
   }, []);

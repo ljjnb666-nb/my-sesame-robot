@@ -19,9 +19,9 @@ describe("ConfirmationDialog", () => {
     expect(screen.queryByText(pending.confirmationId)).toBeNull();
   });
 
-  it("focuses Cancel when opened idle", () => {
+  it("focuses cancel when opened idle", () => {
     render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /cancel/i })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "取消" })).toHaveFocus();
   });
 
   it("Enter does not confirm and Escape cancels while idle", async () => {
@@ -37,7 +37,7 @@ describe("ConfirmationDialog", () => {
 
   it("confirm button is not autofocus", () => {
     render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /confirm action/i })).not.toHaveFocus();
+    expect(screen.getByRole("button", { name: "确认执行" })).not.toHaveFocus();
   });
 
   it("does not restore opener focus when idle changes to submitting", () => {
@@ -74,9 +74,9 @@ describe("ConfirmationDialog", () => {
     const user = userEvent.setup();
     render(<ConfirmationDialog confirmation={pending} mode="idle" onConfirm={vi.fn()} onCancel={vi.fn()} />);
     await user.keyboard("{Shift>}{Tab}{/Shift}");
-    expect(screen.getByRole("button", { name: /confirm action/i })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "确认执行" })).toHaveFocus();
     await user.keyboard("{Tab}");
-    expect(screen.getByRole("button", { name: /cancel/i })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "取消" })).toHaveFocus();
   });
 
   it("does not cancel with Escape while submitting", async () => {
@@ -90,8 +90,8 @@ describe("ConfirmationDialog", () => {
 
   it("disables both buttons while submitting", () => {
     render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={vi.fn()} onCancel={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /confirm action/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "确认执行" })).toBeDisabled();
   });
 
   it("does not confirm with Enter while submitting", async () => {
@@ -125,6 +125,6 @@ describe("ConfirmationDialog", () => {
 
   it("shows runtime wait text while submitting", () => {
     render(<ConfirmationDialog confirmation={pending} mode="submitting" onConfirm={vi.fn()} onCancel={vi.fn()} />);
-    expect(screen.getByText(/Runtime/)).toBeInTheDocument();
+    expect(screen.getByText(/正在等待机器人运行系统返回最终结果/)).toBeInTheDocument();
   });
 });

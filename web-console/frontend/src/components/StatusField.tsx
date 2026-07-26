@@ -8,7 +8,7 @@ export function StatusField({ label, value, tone = "normal" }: Props) {
   return (
     <div className={`status-field tone-${tone}`}>
       <span>{label}</span>
-      <strong>{value ?? "unknown"}</strong>
+      <strong>{value ?? "未知"}</strong>
     </div>
   );
 }

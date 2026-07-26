@@ -154,6 +154,30 @@ main {
   background: rgba(255, 90, 79, 0.1);
 }
 
+.error-banner.tone-success {
+  border-color: rgba(67, 220, 118, 0.45);
+  color: #c9f8d4;
+  background: rgba(67, 220, 118, 0.1);
+}
+
+.error-banner.tone-info {
+  border-color: rgba(77, 178, 255, 0.42);
+  color: #d6edff;
+  background: rgba(77, 178, 255, 0.1);
+}
+
+.error-banner.tone-warning {
+  border-color: rgba(240, 200, 75, 0.45);
+  color: #fff0b8;
+  background: rgba(240, 200, 75, 0.1);
+}
+
+.error-banner.tone-danger {
+  border-color: rgba(255, 90, 79, 0.48);
+  color: #ffd8d5;
+  background: rgba(255, 90, 79, 0.1);
+}
+
 .secondary-button {
   background: #141b21;
 }
@@ -232,7 +256,13 @@ main {
   gap: 6px;
   color: var(--muted);
   font-size: 12px;
-  text-transform: uppercase;
+}
+
+.form-help {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .composer-actions,

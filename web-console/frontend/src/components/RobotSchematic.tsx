@@ -1,10 +1,11 @@
 import { RobotStateResponse } from "../api/types";
+import { faceLabel, motionStateLabel, robotPoseLabel, t } from "../i18n/zh-CN";
 
 export function RobotSchematic({ state }: { state: RobotStateResponse | null }) {
   const hasFault = Boolean(state?.faults.length);
   const moving = state?.motionState === "moving" || Boolean(state?.currentCommand);
   return (
-    <svg className={`robot-schematic ${hasFault ? "fault" : moving ? "moving" : ""}`} viewBox="0 0 520 260" role="img" aria-label="Robot schematic">
+    <svg className={`robot-schematic ${hasFault ? "fault" : moving ? "moving" : ""}`} viewBox="0 0 520 260" role="img" aria-label="机器人示意图">
       <rect className="grid" width="520" height="260" rx="8" />
       <g className="robot-body">
         <rect x="155" y="88" width="210" height="74" rx="28" />
@@ -27,9 +28,9 @@ export function RobotSchematic({ state }: { state: RobotStateResponse | null }) 
         <circle cx="414" cy="220" r="12" />
         <circle cx="392" cy="234" r="12" />
       </g>
-      <text x="24" y="32">POSE {state?.robotPose ?? "unknown"}</text>
-      <text x="392" y="32">FACE {state?.currentFace ?? "default"}</text>
-      <text x="220" y="130">{state?.motionState ?? "idle"}</text>
+      <text x="24" y="32">{t("robot.pose")} {robotPoseLabel(state?.robotPose)}</text>
+      <text x="392" y="32">{t("robot.face")} {faceLabel(state?.currentFace)}</text>
+      <text x="220" y="130">{motionStateLabel(state?.motionState)}</text>
     </svg>
   );
 }

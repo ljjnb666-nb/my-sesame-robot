@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { AlertTriangle, LoaderCircle } from "lucide-react";
+import { actionLabel, t } from "../i18n/zh-CN";
 import { PendingConfirmation } from "../state/simulatorTypes";
 
 type ConfirmationMode = "idle" | "submitting";
@@ -103,29 +104,25 @@ export function ConfirmationDialog({ confirmation, mode, onConfirm, onCancel }: 
       <div className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmation-title" ref={dialogRef} tabIndex={-1}>
         <div className="dialog-title">
           {submitting ? <LoaderCircle className="spin" aria-hidden="true" /> : <AlertTriangle aria-hidden="true" />}
-          <h2 id="confirmation-title">Confirm Robot Action</h2>
+          <h2 id="confirmation-title">{t("confirmation.title")}</h2>
         </div>
         <dl>
-          <dt>Action</dt>
-          <dd>{confirmation.action}</dd>
-          <dt>Original request</dt>
+          <dt>{t("confirmation.action")}</dt>
+          <dd>{actionLabel(confirmation.action)}</dd>
+          <dt>{t("confirmation.originalRequest")}</dt>
           <dd>{confirmation.originalText}</dd>
-          <dt>Reason</dt>
+          <dt>{t("confirmation.reason")}</dt>
           <dd>{confirmation.message}</dd>
-          <dt>Fingerprint</dt>
-          <dd>{confirmation.fingerprint ?? "not provided"}</dd>
+          <dt>{t("confirmation.fingerprint")}</dt>
+          <dd>{confirmation.fingerprint ?? t("confirmation.fingerprintMissing")}</dd>
         </dl>
-        <p className="warning-box">
-          {submitting
-            ? "正在等待 Runtime 返回最终结果。请勿关闭页面或重复提交。"
-            : "确认后才会重新调用 Chat API 消费当前网页内存里的确认令牌。确认 ID 不会显示、记录或持久化。"}
-        </p>
+        <p className="warning-box">{submitting ? t("confirmation.submitting") : t("confirmation.help")}</p>
         <div className="dialog-actions">
           <button type="button" className="secondary-button" onClick={onCancel} disabled={submitting} ref={cancelRef}>
-            Cancel
+            {t("button.cancel")}
           </button>
           <button type="button" className="danger-button" onClick={onConfirm} disabled={submitting}>
-            Confirm Action
+            {t("button.confirmAction")}
           </button>
         </div>
       </div>

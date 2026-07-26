@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
+import { t } from "../i18n/zh-CN";
 import { ChatMessageModel } from "../state/simulatorTypes";
-import { ChatMessage } from "./ChatMessage";
 import { ChatComposer } from "./ChatComposer";
-import { QuickCommands } from "./QuickCommands";
+import { ChatMessage } from "./ChatMessage";
 import { EmptyState } from "./EmptyState";
+import { QuickCommands } from "./QuickCommands";
 
 type Props = {
   messages: ChatMessageModel[];
@@ -27,9 +28,9 @@ export function ChatPanel({ messages, input, disabled, sending, onInput, onSend,
   return (
     <section className="panel chat-panel">
       <div className="panel-title">
-        <h2>AI Chat</h2>
+        <h2>{t("panel.chat")}</h2>
         <button type="button" className="secondary-button" onClick={onClear} disabled={disabled || sending}>
-          Clear chat
+          {t("button.clearChat")}
         </button>
       </div>
       <div
@@ -41,7 +42,7 @@ export function ChatPanel({ messages, input, disabled, sending, onInput, onSend,
           shouldStick.current = distance < 48;
         }}
       >
-        {messages.length ? messages.map((message) => <ChatMessage key={message.id} message={message} />) : <EmptyState title="Chat history is stored only in this page memory." />}
+        {messages.length ? messages.map((message) => <ChatMessage key={message.id} message={message} />) : <EmptyState title={t("chat.empty")} />}
       </div>
       <QuickCommands disabled={disabled || sending} onSend={(text) => onSend(text)} />
       <ChatComposer value={input} disabled={disabled} sending={sending} onChange={onInput} onSubmit={() => onSend()} />

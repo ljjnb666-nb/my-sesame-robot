@@ -18,7 +18,7 @@ const apiBaseResult = validateApiBase(import.meta.env.VITE_API_BASE_URL as strin
 const apiBase = apiBaseResult.ok ? apiBaseResult.base : "/api";
 const ERROR_MESSAGE_LIMIT = 240;
 const ERROR_CODE_LIMIT = 64;
-const GENERIC_API_ERROR = "API request failed.";
+const GENERIC_API_ERROR = "接口请求失败。";
 const KNOWN_API_CODES = new Set([
   "invalid_request",
   "stale_confirmation",
@@ -103,7 +103,7 @@ async function requestJson(path: string, init: RequestInit = {}, options: Reques
     });
     const contentType = response.headers.get("content-type") ?? "";
     if (!contentType.includes("application/json")) {
-      throw new ApiError("invalid_json", "Backend returned a non-JSON response.", { status: response.status });
+      throw new ApiError("invalid_json", "接口返回的数据不是 JSON。", { status: response.status });
     }
     const payload: unknown = await response.json();
     if (!response.ok) {
@@ -113,22 +113,22 @@ async function requestJson(path: string, init: RequestInit = {}, options: Reques
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new ApiError("abort", "Request was aborted.");
+      throw new ApiError("abort", "请求已取消。");
     }
     if (error instanceof DOMException && error.name === "TimeoutError") {
-      throw new ApiError("timeout", "Request timed out.");
+      throw new ApiError("timeout", "请求超时。");
     }
     if (signal.aborted) {
-      throw new ApiError("timeout", "Request timed out.");
+      throw new ApiError("timeout", "请求超时。");
     }
-    throw new ApiError("offline", "Could not connect to the local simulator API.");
+    throw new ApiError("offline", "无法连接到本地模拟器接口。");
   } finally {
     cleanup();
   }
 }
 
 function parseHealth(payload: unknown): HealthResponse {
-  if (!isRecord(payload)) throw new ApiError("invalid_response", "Health response is invalid.");
+  if (!isRecord(payload)) throw new ApiError("invalid_response", "健康检查返回内容无效。");
   const parsed: HealthResponse = {
     status: stringField(payload, "status"),
     version: stringField(payload, "version"),
@@ -137,13 +137,13 @@ function parseHealth(payload: unknown): HealthResponse {
     provider: stringField(payload, "provider"),
   };
   if (parsed.runtimeMode !== "simulator" || parsed.simulatorOnly !== true) {
-    throw new ApiError("unsafe_mode", "Current backend is not a safe simulator runtime.");
+    throw new ApiError("unsafe_mode", "当前后端不是安全的本地模拟器模式。");
   }
   return parsed;
 }
 
 export function parseRobotState(payload: unknown): RobotStateResponse {
-  if (!isRecord(payload)) throw new ApiError("invalid_response", "State response is invalid.");
+  if (!isRecord(payload)) throw new ApiError("invalid_response", "机器人状态返回内容无效。");
   return {
     runtimeMode: stringField(payload, "runtimeMode"),
     motionState: nullableString(payload, "motionState"),
@@ -178,7 +178,7 @@ function parseTimelineEvent(value: unknown): TimelineEvent | null {
 }
 
 function parseTimeline(payload: unknown): TimelineResponse {
-  if (!isRecord(payload)) throw new ApiError("invalid_response", "Timeline response is invalid.");
+  if (!isRecord(payload)) throw new ApiError("invalid_response", "运行记录返回内容无效。");
   const events = Array.isArray(payload.events) ? payload.events.map(parseTimelineEvent).filter((event): event is TimelineEvent => event !== null) : [];
   return {
     events,
@@ -187,7 +187,7 @@ function parseTimeline(payload: unknown): TimelineResponse {
 }
 
 function parseChat(payload: unknown): ChatResponse {
-  if (!isRecord(payload) || typeof payload.status !== "string") throw new ApiError("invalid_response", "Chat response is invalid.");
+  if (!isRecord(payload) || typeof payload.status !== "string") throw new ApiError("invalid_response", "对话返回内容无效。");
   return {
     status: stringField(payload, "status"),
     message: nullableString(payload, "message") ?? nullableString(payload, "user_message") ?? undefined,
@@ -202,7 +202,7 @@ function parseChat(payload: unknown): ChatResponse {
 }
 
 function parseFault(payload: unknown): FaultResponse {
-  if (!isRecord(payload)) throw new ApiError("invalid_response", "Fault response is invalid.");
+  if (!isRecord(payload)) throw new ApiError("invalid_response", "故障操作返回内容无效。");
   return {
     status: stringField(payload, "status"),
     fault: stringField(payload, "fault"),
@@ -211,7 +211,7 @@ function parseFault(payload: unknown): FaultResponse {
 }
 
 function parseSimulatorReset(payload: unknown): SimulatorResetResponse {
-  if (!isRecord(payload)) throw new ApiError("invalid_response", "Simulator reset response is invalid.");
+  if (!isRecord(payload)) throw new ApiError("invalid_response", "模拟器重置返回内容无效。");
   return {
     status: stringField(payload, "status"),
     generation: numberField(payload, "generation") ?? 0,
@@ -220,7 +220,7 @@ function parseSimulatorReset(payload: unknown): SimulatorResetResponse {
 }
 
 function parseSessionReset(payload: unknown): SessionResetResponse {
-  if (!isRecord(payload)) throw new ApiError("invalid_response", "Session reset response is invalid.");
+  if (!isRecord(payload)) throw new ApiError("invalid_response", "会话重置返回内容无效。");
   return {
     status: stringField(payload, "status"),
     sessionId: stringField(payload, "sessionId"),
