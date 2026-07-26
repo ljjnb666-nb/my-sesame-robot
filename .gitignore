@@ -10,6 +10,13 @@ __pycache__/
 *.py[cod]
 .venv/
 
+# Node local outputs
+node_modules/
+dist/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
 # Local private AI controller data
 ai-controller/data/
 .env

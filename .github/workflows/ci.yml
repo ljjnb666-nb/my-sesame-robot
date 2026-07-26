@@ -45,6 +45,13 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web-console/frontend/package-lock.json
+
       - name: Repository hygiene
         run: |
           if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
@@ -148,6 +155,86 @@ jobs:
             exit $LASTEXITCODE
           }
           "## Python syntax validation`n`n- Result: PASS`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Frontend dependencies
+        working-directory: web-console/frontend
+        run: |
+          npm ci
+
+      - name: Frontend lint
+        working-directory: web-console/frontend
+        run: |
+          npm run lint
+
+      - name: Frontend typecheck
+        working-directory: web-console/frontend
+        run: |
+          npm run typecheck
+
+      - name: Frontend unit tests
+        working-directory: web-console/frontend
+        run: |
+          npm run test:unit
+
+      - name: Frontend build
+        working-directory: web-console/frontend
+        run: |
+          npm run build
+
+      - name: Install Playwright browser
+        working-directory: web-console/frontend
+        run: |
+          npx playwright install chromium
+
+      - name: Frontend E2E
+        working-directory: web-console/frontend
+        env:
+          SESAME_AI_PROVIDER: mock
+        run: |
+          npm run test:e2e
+          Get-Content playwright-report\e2e-summary.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Verify frontend browser artifact allowlist
+        if: always()
+        run: |
+          $ForbiddenPatterns = @(
+            "web-console/frontend/playwright-report/results.json",
+            "web-console/frontend/playwright-report/.raw-results.json",
+            "web-console/frontend/playwright-report/index.html",
+            "web-console/frontend/playwright-report/data",
+            "web-console/frontend/blob-report",
+            "web-console/frontend/**/trace.zip",
+            "web-console/frontend/**/*.har",
+            "web-console/frontend/**/*.webm",
+            "web-console/frontend/**/*.mp4",
+            "web-console/frontend/**/network*",
+            "web-console/frontend/**/request-body*"
+          )
+          $Found = @()
+          foreach ($Pattern in $ForbiddenPatterns) {
+            $Matches = Get-ChildItem -Path $Pattern -Force -ErrorAction SilentlyContinue
+            if ($Matches) {
+              $Found += $Matches.FullName
+            }
+          }
+          if ($Found.Count -gt 0) {
+            Write-Error "Forbidden frontend browser artifacts detected before upload."
+            $Found | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+
+      - name: Upload frontend browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sesame-web-console-browser-${{ env.SHORT_SHA }}
+          path: |
+            web-console/frontend/test-results/*.png
+            web-console/frontend/playwright-report/e2e-summary.json
+            web-console/frontend/playwright-report/e2e-summary.md
+            web-console/frontend/playwright-report/e2e-failure-summary.md
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Set up Arduino CLI
         run: |
