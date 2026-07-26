@@ -5,5 +5,12 @@ description = "Computer-side controller foundation for Sesame AI Robot"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.115,<1",
+    "pydantic>=2,<3",
+    "uvicorn>=0.30,<1",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
